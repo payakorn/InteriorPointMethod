@@ -1,8 +1,10 @@
 import numpy as np
 from scipy.optimize import linprog
+import timeit
 
 
 def create_matrix(A, x, y, s, **options):
+    m, n = np.shape(A)
     X = np.diagflat(x)
     S = np.diagflat(s)
     block1 = np.block([np.zeros((n, n)), A.T, np.eye(n)])
@@ -12,7 +14,7 @@ def create_matrix(A, x, y, s, **options):
     return matrix
 
 
-def create_rhs_predicted(A, x, y, s, **options):
+def create_rhs_predicted(A, b, c, x, y, s, **options):
     rb = np.matmul(A, x) - b
     rc = np.matmul(A.T, y) + s - c
     r3 = -x * s
@@ -20,28 +22,30 @@ def create_rhs_predicted(A, x, y, s, **options):
     return right_hand_side
 
 
-def create_rhs_corrected(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
+def create_rhs_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
+    m, n = np.shape(A)
     rb = np.matmul(A, x) - b
     rc = np.matmul(A.T, y) + s - c
     # delta_x_aff, delta_y_aff, delta_s_aff = direction(A, x, y, s, options="predicted")
     mu_aff, mu_k, centering = duality_gap(
-        x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
     )
     r4 = (-x * s) - (delta_x_aff * delta_s_aff) + (centering * mu_k * np.ones((n, 1)))
     right_hand_side = np.block([[-rc], [-rb], [r4]])
     return right_hand_side
 
 
-def check_optimality(A, b, c, x, y, s):
+def check_optimality(A, b, c, x, y, s, e1, e2, e3):
     primal = e1 * (1 + np.linalg.norm(b)) <= np.linalg.norm(np.matmul(A, x) - b)
     dual = e2 * (1 + np.linalg.norm(c)) <= np.linalg.norm(np.matmul(A.T, y) + s - c)
-    duality_gap = e3 >= (np.dot(x.T, s))
-    return primal or dual or duality_gap
+    duality_gap_check = e3 >= (np.dot(x.T, s))
+    return primal or dual or duality_gap_check
 
 
-def direction_predicted(A, x, y, s):
+def direction_predicted(A, b, c, x, y, s):
+    m, n = np.shape(A)
     matrix = create_matrix(A=A, x=x, y=y, s=s)
-    right_hand_side = create_rhs_predicted(A, x, y, s)
+    right_hand_side = create_rhs_predicted(A, b, c, x, y, s)
     direction_vec = np.linalg.solve(matrix, right_hand_side)
     delta_x_aff = direction_vec[0:n]
     delta_y_aff = direction_vec[n : n + m]
@@ -49,10 +53,11 @@ def direction_predicted(A, x, y, s):
     return (delta_x_aff, delta_y_aff, delta_s_aff)
 
 
-def direction_corrected(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
+def direction_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
+    m, n = np.shape(A)
     matrix = create_matrix(A, x, y, s)
     right_hand_side = create_rhs_corrected(
-        A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
     )
     direction_vec = np.linalg.solve(matrix, right_hand_side)
     delta_x = direction_vec[0:n]
@@ -68,7 +73,8 @@ def convert_to_array(A, b, c):
     return (A, b, c)
 
 
-def initial_vector():
+def initial_vector(A):
+    m, n = np.shape(A)
     # x = np.zeros((n, 1))
     y = np.zeros((m, 1))
     # I = c < 0
@@ -109,7 +115,8 @@ def predicted(x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
     return (x_aff, y_aff, s_aff)
 
 
-def duality_gap(x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
+def duality_gap(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
+    m, n = np.shape(A)
     (x_aff, y_aff, s_aff) = predicted(x, y, s, delta_x_aff, delta_y_aff, delta_s_aff)
     mu_aff = np.dot(x_aff.T, s_aff) / n
     mu_k = np.dot(x.T, s) / n
@@ -151,14 +158,16 @@ def scipy_solve(A, b, c):
     print(res)
 
 
-# main
-def interior(A, b, c):
-    # main
+def interior(A, b, c, tol=1e-20):
+    (A, b, c) = convert_to_array(A, b, c)
+    e1 = tol
+    e2 = tol
+    e3 = tol
+    m, n = np.shape(A)
     k = 0
-    (x, y, s) = initial_vector()
-    while check_optimality(A, b, c, x, y, s) and k < 50000:
-        # matrix = create_matrix(A, x, y, s)
-        (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted(A, x, y, s)
+    (x, y, s) = initial_vector(A)
+    while check_optimality(A, b, c, x, y, s, e1, e2, e3) and k < 50000:
+        (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted(A, b, c, x, y, s)
         (alpha_primal, alpha_dual) = predicted_stepsize(
             delta_x_aff, delta_y_aff, delta_s_aff, x, s
         )
@@ -166,23 +175,22 @@ def interior(A, b, c):
             x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
         )
         (mu_aff, mu_k, centering) = duality_gap(
-            x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+            A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
         )
         (delta_x, delta_y, delta_s) = direction_corrected(
-            A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+            A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
         )
         (x, y, s) = corrected(
             x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
         )
         k += 1
 
-    print("optimal:", ~check_optimality(A, b, c, x, y, s))
+    print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3))
     print("x:\n", x)
     print("k:\n", k)
     print("objective function:", sum(x * c))
 
 
-# scipy_solve(A, b, c)
 ## Define problem
 def ex1():
     c = [-100, -125, -20]
@@ -199,37 +207,3 @@ def ex2():
     # solution f = -15000, x_star = (300, 300, ...)
     return (A, b, c)
 
-
-## convert to numpy array
-(A, b, c) = ex1()
-(A, b, c) = convert_to_array(A, b, c)
-# parameter
-e1 = 1e-20
-e2 = 1e-20
-e3 = 1e-20
-n = np.size(A, 1)
-m = np.size(A, 0)
-# scipy_solve(A, b, c)
-interior(A, b, c)
-
-
-# print(rb, "\n")
-# print(matrix, "\n")
-# print("optimal:", ~check_optimality(A, b, c, s))
-# print("delta x aff:\n", delta_x_aff)
-# print("delta y aff:\n", delta_y_aff)
-# print("delta s aff:\n", delta_s_aff)
-# print("x_aff:\n", x_aff)
-# print("y_aff:\n", y_aff)
-# print("s_aff:\n", s_aff)
-# print("mu_aff:\n", mu_aff)
-# print("mu_k:\n", mu_k)
-# print("centering:\n", centering)
-# print("delta x:\n", delta_x)
-# print("delta y:\n", delta_y)
-# print("delta s:\n", delta_s)
-# print("x:\n", x)
-# print("y:\n", y)
-# print("s:\n", s)
-# print("k:\n", k)
-# print("objective function:", sum(x * c))
