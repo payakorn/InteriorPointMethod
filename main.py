@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.optimize import linprog
-import timeit
 
 
 def create_matrix(A, x, y, s, **options):
