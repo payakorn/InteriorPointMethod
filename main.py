@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.optimize import linprog
+from sparse import create_sparse_matrix
+from scipy.sparse.linalg import spsolve
 
 
 def create_matrix(A, x, y, s, **options):
@@ -41,11 +43,21 @@ def check_optimality(A, b, c, x, y, s, e1, e2, e3):
     return primal or dual or duality_gap_check
 
 
+def solve_linear(A, b, method="scipy"):
+    if method == "scipy":
+        return np.linalg.solve(A, b)
+    elif method == "sparse":
+        return spsolve(A, b)
+    else:
+        raise 'no method'
+
+
 def direction_predicted(A, b, c, x, y, s):
     m, n = np.shape(A)
     matrix = create_matrix(A=A, x=x, y=y, s=s)
     right_hand_side = create_rhs_predicted(A, b, c, x, y, s)
-    direction_vec = np.linalg.solve(matrix, right_hand_side)
+    direction_vec = solve_linear(matrix, right_hand_side)
+    # direction_vec = solve_linear(matrix, right_hand_side, method='sparse')
     delta_x_aff = direction_vec[0:n]
     delta_y_aff = direction_vec[n : n + m]
     delta_s_aff = direction_vec[m + n :]
@@ -55,10 +67,12 @@ def direction_predicted(A, b, c, x, y, s):
 def direction_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
     m, n = np.shape(A)
     matrix = create_matrix(A, x, y, s)
+    # matrix = create_sparse_matrix(A, x, s)
     right_hand_side = create_rhs_corrected(
         A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
     )
-    direction_vec = np.linalg.solve(matrix, right_hand_side)
+    direction_vec = solve_linear(matrix, right_hand_side)
+    # direction_vec = solve_linear(matrix, right_hand_side, method='sparse')
     delta_x = direction_vec[0:n]
     delta_y = direction_vec[n : n + m]
     delta_s = direction_vec[m + n :]
@@ -166,6 +180,7 @@ def interior(A, b, c, tol=1e-20):
     k = 0
     (x, y, s) = initial_vector(A)
     while check_optimality(A, b, c, x, y, s, e1, e2, e3) and k < 50000:
+        print('iteration : {}'.format(k))
         (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted(A, b, c, x, y, s)
         (alpha_primal, alpha_dual) = predicted_stepsize(
             delta_x_aff, delta_y_aff, delta_s_aff, x, s

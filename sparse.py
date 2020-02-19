@@ -30,6 +30,7 @@ def create_sparse_matrix(A, x, s):
     )
 
 
+# get value from sparse matrix
 def get_item(row_index, column_index, matrix):
     # Get row values
     row_start = matrix.indptr[row_index]
