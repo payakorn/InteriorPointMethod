@@ -1,8 +1,24 @@
 import numpy as np
 from scipy import sparse
+from scipy.io import loadmat
 
 
 def create_sparse_matrix(A, x, s):
+
+    """Create sparse matrix in form [0 A^T I]
+                                    [A  0  0]
+                                    [S  0  X] 
+    Arguments:
+        A {[mxn array]} -- [linear constraint Ax = b]
+        x {[1d array]} -- [solution vector in primal problem]
+        s {[1d array]} -- [slack variable in dual problem]
+    
+    Returns:
+        [row index] -- sparse matrix
+        [column index] --
+        [values] --
+    """
+
     m, n = np.shape(A)
     i, j, k = sparse.find(A)
     # A transpose and I
@@ -22,8 +38,9 @@ def create_sparse_matrix(A, x, s):
     col_index = np.append(col_index, range(m + n, m + 2 * n))
     values = np.append(values, x)
     # check
-    print("row :", len(row_index))
-    print("col :", len(col_index))
+    print("sparse matrix non-zero element :")
+    print("row    :", len(row_index))
+    print("col    :", len(col_index))
     print("values :", len(values))
     return sparse.coo_matrix(
         (values, (row_index, col_index)), shape=(m + 2 * n, m + 2 * n)
@@ -54,3 +71,53 @@ def get_item(row_index, column_index, matrix):
         return 0
 
 
+def load_data_mps(file_name):
+
+    """load linear problem from .mat file 
+    
+    Arguments:
+        file_name {text} -- .mat file
+    
+    Returns:
+        f -- objective function
+        i {array} -- row index for sparse matrix A
+        j {array} -- column index for sparse matrix A
+        k {array} -- values for sparse matrix A
+        b {array} -- right hand side vector s.t. Ax = b
+        n {number} -- the number of variables
+        m {number} -- the number of constraints
+    """
+
+    data = loadmat(file_name)
+    return (
+        data["f"],
+        data["A"]["i"][0][0],
+        data["A"]["j"][0][0],
+        data["A"]["k"][0][0],
+        data["b"],
+        data["num_variables"][0][0],
+        data["num_constraints"][0][0],
+    )
+
+
+def print_information_sparse(f, i, j, k, b, n, m):
+    
+    """[summary]
+    
+    Arguments:
+        f {array} -- objective function
+        i {array} -- row index for sparse matrix A
+        j {array} -- column index for sparse matrix A
+        k {array} -- values for sparse matrix A
+        b {array} -- right hand side vector s.t. Ax = b
+        n {number} -- the number of variables
+        m {number} -- the number of constraints
+    """
+
+    print("f :", len(f))
+    print("i :", len(i))
+    print("j :", len(j))
+    print("k :", len(k))
+    print("b :", len(b))
+    print("n :", n)
+    print("m :", m)
