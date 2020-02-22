@@ -64,6 +64,18 @@ def direction_predicted(A, b, c, x, y, s):
     return (delta_x_aff, delta_y_aff, delta_s_aff)
 
 
+def direction_predicted_sparse(A, b, c, x, y, s):
+    m, n = np.shape(A)
+    matrix = create_matrix(A=A, x=x, y=y, s=s)
+    right_hand_side = create_rhs_predicted(A, b, c, x, y, s)
+    direction_vec = solve_linear(matrix, right_hand_side)
+    # direction_vec = solve_linear(matrix, right_hand_side, method='sparse')
+    delta_x_aff = direction_vec[0:n]
+    delta_y_aff = direction_vec[n : n + m]
+    delta_s_aff = direction_vec[m + n :]
+    return (delta_x_aff, delta_y_aff, delta_s_aff)
+
+
 def direction_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
     m, n = np.shape(A)
     matrix = create_matrix(A, x, y, s)
@@ -172,6 +184,16 @@ def scipy_solve(A, b, c):
 
 
 def interior(A, b, c, tol=1e-20):
+    """[summary]
+    
+    Arguments:
+        A {[array matrix]} -- [matrix constraint]
+        b {[array]} -- [right hand side]
+        c {[array]} -- [objective function]
+    
+    Keyword Arguments:
+        tol {[float]} -- [error] (default: {1e-20})
+    """
     (A, b, c) = convert_to_array(A, b, c)
     e1 = tol
     e2 = tol
@@ -181,31 +203,39 @@ def interior(A, b, c, tol=1e-20):
     (x, y, s) = initial_vector(A)
     while check_optimality(A, b, c, x, y, s, e1, e2, e3) and k < 50000:
         print('iteration : {}'.format(k))
+        # get direction
         (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted(A, b, c, x, y, s)
+        # get stepsize
         (alpha_primal, alpha_dual) = predicted_stepsize(
             delta_x_aff, delta_y_aff, delta_s_aff, x, s
         )
+        # update direction
         (x_aff, y_aff, s_aff) = predicted(
             x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
         )
+        # calculate duality gap
         (mu_aff, mu_k, centering) = duality_gap(
             A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
         )
+        # get direction
         (delta_x, delta_y, delta_s) = direction_corrected(
             A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
         )
+        # update direction
         (x, y, s) = corrected(
             x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
         )
+        # go to the next iteration
         k += 1
 
+    # print output 
     print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3))
     print("x:\n", x)
     print("k:\n", k)
     print("objective function:", sum(x * c))
 
 
-## Define problem
+## Example problems
 def ex1():
     c = [-100, -125, -20]
     A = [[3, 6, 8], [8, 4, 1]]
