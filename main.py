@@ -1,7 +1,8 @@
 import numpy as np
 from scipy.optimize import linprog
-from sparse import create_sparse_matrix
+from sparse_interior import create_sparse_matrix, rowcol_to_sparse
 from scipy.sparse.linalg import spsolve
+from scipy import sparse
 
 
 def create_matrix(A, x, y, s, **options):
@@ -15,41 +16,124 @@ def create_matrix(A, x, y, s, **options):
     return matrix
 
 
-def create_rhs_predicted(A, b, c, x, y, s, **options):
-    rb = np.matmul(A, x) - b
-    rc = np.matmul(A.T, y) + s - c
-    r3 = -x * s
-    right_hand_side = np.block([[-rc], [-rb], [r3]])
-    return right_hand_side
+def test_create_rhs_predicted(A, b, c, x, y, s, options="non-sparse"):
+    # print("shape A :", np.shape(A))
+    # print("shape b", np.shape(b))
+    # print("shape x", np.shape(x))
+    # print("shape y", np.shape(y))
+    # print("shape s", np.shape(s))
+    # c = np.linalg.transpose(c)
+    i, j, k, m, n = A
+    A = rowcol_to_sparse(i, j, k, m, n)
+    rb = A @ x
+    # print(rb)
+    # print("shape c :", np.shape(c))
+    # print("shape s :", np.shape(s))
+    # print("shape y :", np.shape(y))
+    # print("shape sparse.coo_matrix.transpose(A) @ y :", np.shape(sparse.coo_matrix.transpose(A) @ y))
+    # print(c)
+    rowlen_c, collen_c = np.shape(c)
+    # print(np.add(sparse.coo_matrix.transpose(A) @ y + s, c.T))
+    rc = sparse.coo_matrix.transpose(A) @ y + s - c.T
+    # rc = sparse.csc_matrix.transpose(A) @ y
+    # print("print : rc = \n")
+    # print(rc)
+    r3 = x * s
+    # print(r3)
+    if options == "seperated":
+        return rc, rb, r3
+    elif options == "full":
+        right_hand_side = np.block([[-rc], [-rb], [-r3]])
+        return right_hand_side
+
+def create_rhs_predicted(A, b, c, x, y, s, options='non-sparse'):
+    # print("shape A :", np.shape(A))
+    # print("shape b", np.shape(b))
+    r3 = x * s
+    if options == 'non-sparse':
+        try:
+            rb = np.matmul(A, x) - b
+            rc = np.matmul(A.T, y) + s - c
+        except:
+            rb = A @ x
+            rc = A.T @ y + s - c
+        r3 = x * s
+        right_hand_side = np.block([[-rc], [-rb], [-r3]])
+        return right_hand_side
+    elif options == 'seperated':
+        i, j, k, m, n = A
+        A = rowcol_to_sparse(i, j, k, m, n)
+        rb = A @ x - b
+        rc = sparse.coo_matrix.transpose(A) @ y + s - c
+        r3 = x * s
+        return rc, rb, r3
+    elif options == "full":
+        i, j, k, m, n = A
+        A = rowcol_to_sparse(i, j, k, m, n)
+        rb = A @ x - b
+        r3 = x * s
+        row_Ax, col_Ax = np.shape(A@x)
+        rc = sparse.coo_matrix.transpose(A) @ y + s - c
+        right_hand_side = np.block([[-rc], [-rb], [-r3]])
+        return right_hand_side
 
 
-def create_rhs_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
-    m, n = np.shape(A)
-    rb = np.matmul(A, x) - b
-    rc = np.matmul(A.T, y) + s - c
-    # delta_x_aff, delta_y_aff, delta_s_aff = direction(A, x, y, s, options="predicted")
-    mu_aff, mu_k, centering = duality_gap(
-        A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
-    )
-    r4 = (-x * s) - (delta_x_aff * delta_s_aff) + (centering * mu_k * np.ones((n, 1)))
-    right_hand_side = np.block([[-rc], [-rb], [r4]])
-    return right_hand_side
+def create_rhs_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, options='non-sparse'):
+    if options == 'non-sparse':
+        m, n = np.shape(A)
+        rb = np.matmul(A, x) - b
+        rc = np.matmul(A.T, y) + s - c
+        # delta_x_aff, delta_y_aff, delta_s_aff = direction(A, x, y, s, options="predicted")
+        mu_aff, mu_k, centering = duality_gap(
+            A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+        r4 = (-x * s) - (delta_x_aff * delta_s_aff) + (centering * mu_k * np.ones((n, 1)))
+        right_hand_side = np.block([[-rc], [-rb], [r4]])
+        return right_hand_side
+    elif options == 'seperated':
+        i, j, k, m, n = A
+        A = rowcol_to_sparse(i, j, k, m, n)
+        rb = A @ x - b
+        rc = sparse.coo_matrix.transpose(A) @ y + s - c.T
+        r4 = (x * s) + (delta_x_aff * delta_s_aff) - (centering * mu_k * np.ones((n, 1)))
+        mu_aff, mu_k, centering = duality_gap(
+            A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+        return rc, rb, r4
+    elif options == 'full':
+        i, j, k, m, n = A
+        A = rowcol_to_sparse(i, j, k, m, n)
+        rb = A @ x - b
+        rc = sparse.coo_matrix.transpose(A) @ y + s - c
+        mu_aff, mu_k, centering = duality_gap(
+            A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+        r4 = (x * s) + (delta_x_aff * delta_s_aff) - (centering * mu_k * np.ones((n, 1)))
+        row, col = np.shape(delta_x_aff)
+        right_hand_side = np.block([[-rc], [-rb], [-r4]])
+        return right_hand_side
 
 
-def check_optimality(A, b, c, x, y, s, e1, e2, e3):
-    primal = e1 * (1 + np.linalg.norm(b)) <= np.linalg.norm(np.matmul(A, x) - b)
-    dual = e2 * (1 + np.linalg.norm(c)) <= np.linalg.norm(np.matmul(A.T, y) + s - c)
-    duality_gap_check = e3 >= (np.dot(x.T, s))
-    return primal or dual or duality_gap_check
+def check_optimality(A, b, c, x, y, s, e1, e2, e3, options='non-sparse'):
+    if options == 'non-sparse':
+        primal = e1 * (1 + np.linalg.norm(b)) <= np.linalg.norm(np.matmul(A, x) - b)
+        dual = e2 * (1 + np.linalg.norm(c)) <= np.linalg.norm(np.matmul(A.T, y) + s - c)
+        duality_gap_check = e3 >= (np.dot(x.T, s))
+        return primal or dual or duality_gap_check
+    elif options == 'sparse':
+        primal = e1 * (1 + np.linalg.norm(b)) <= np.linalg.norm(A @ x - b)
+        dual = e2 * (1 + np.linalg.norm(c)) <= np.linalg.norm(A.T@y + s - c)
+        duality_gap_check = e3 >= (np.dot(x.T, s))
+        return primal or dual or duality_gap_check
 
 
 def solve_linear(A, b, method="scipy"):
     if method == "scipy":
         return np.linalg.solve(A, b)
     elif method == "sparse":
-        return spsolve(A, b)
+        return spsolve(A, b).reshape((len(b), 1))
     else:
-        raise 'no method'
+        raise "no method"
 
 
 def direction_predicted(A, b, c, x, y, s):
@@ -66,10 +150,10 @@ def direction_predicted(A, b, c, x, y, s):
 
 def direction_predicted_sparse(A, b, c, x, y, s):
     m, n = np.shape(A)
-    matrix = create_matrix(A=A, x=x, y=y, s=s)
-    right_hand_side = create_rhs_predicted(A, b, c, x, y, s)
-    direction_vec = solve_linear(matrix, right_hand_side)
-    # direction_vec = solve_linear(matrix, right_hand_side, method='sparse')
+    i, j, k = sparse.find(A)
+    matrix = create_sparse_matrix(A, x, s, options="sparse")
+    right_hand_side = create_rhs_predicted((i, j, k, m, n), b, c, x, y, s, options='full')
+    direction_vec = solve_linear(matrix, right_hand_side, method='sparse')
     delta_x_aff = direction_vec[0:n]
     delta_y_aff = direction_vec[n : n + m]
     delta_s_aff = direction_vec[m + n :]
@@ -90,6 +174,16 @@ def direction_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff)
     delta_s = direction_vec[m + n :]
     return delta_x, delta_y, delta_s
 
+def direction_corrected_sparse(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
+    m, n = np.shape(A)
+    i, j, k = sparse.find(A)
+    matrix = create_sparse_matrix(A, x, s, options="sparse")
+    right_hand_side = create_rhs_corrected((i, j, k, m, n), b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, options='full')
+    direction_vec = solve_linear(matrix, right_hand_side, method='sparse')
+    delta_x_aff = direction_vec[0:n]
+    delta_y_aff = direction_vec[n : n + m]
+    delta_s_aff = direction_vec[m + n :]
+    return (delta_x_aff, delta_y_aff, delta_s_aff)
 
 def convert_to_array(A, b, c):
     A = np.asarray(A)
@@ -151,7 +245,7 @@ def duality_gap(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
 
 def full_stepsize(
     x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
-):
+    ):
     eta = 0.95
     # primal
     i = delta_x < 0
@@ -166,7 +260,7 @@ def full_stepsize(
 
 def corrected(
     x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
-):
+    ):
     (alpha_primal, alpha_dual) = full_stepsize(
         x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
     )
@@ -202,7 +296,7 @@ def interior(A, b, c, tol=1e-20):
     k = 0
     (x, y, s) = initial_vector(A)
     while check_optimality(A, b, c, x, y, s, e1, e2, e3) and k < 50000:
-        print('iteration : {}'.format(k))
+        print("iteration : {}".format(k))
         # get direction
         (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted(A, b, c, x, y, s)
         # get stepsize
@@ -228,12 +322,63 @@ def interior(A, b, c, tol=1e-20):
         # go to the next iteration
         k += 1
 
-    # print output 
+    # print output
     print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3))
     print("x:\n", x)
     print("k:\n", k)
     print("objective function:", sum(x * c))
 
+
+def interior_sparse(A, b, c, tol=1e-20):
+    """[summary]
+    
+    Arguments:
+        A {[array matrix]} -- [matrix constraint]
+        b {[array]} -- [right hand side]
+        c {[array]} -- [objective function]
+    
+    Keyword Arguments:
+        tol {[float]} -- [error] (default: {1e-20})
+    """
+    # (A, b, c) = convert_to_array(A, b, c)
+    e1 = tol
+    e2 = tol
+    e3 = tol
+    m, n = np.shape(A)
+    k = 0
+    (x, y, s) = initial_vector(A)
+    while check_optimality(A, b, c, x, y, s, e1, e2, e3, options='sparse') and k < 50000:
+        print("iteration : {}".format(k))
+        # get direction
+        (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted_sparse(A, b, c, x, y, s)
+        # get stepsize
+        (alpha_primal, alpha_dual) = predicted_stepsize(
+            delta_x_aff, delta_y_aff, delta_s_aff, x, s
+        )
+        # update direction
+        (x_aff, y_aff, s_aff) = predicted(
+            x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+        # calculate duality gap
+        (mu_aff, mu_k, centering) = duality_gap(
+            A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+        # get direction
+        (delta_x, delta_y, delta_s) = direction_corrected_sparse(
+            A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+        # update direction
+        (x, y, s) = corrected(
+            x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+        # go to the next iteration
+        k += 1
+
+    # print output
+    print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3))
+    print("x:\n", x)
+    print("k:\n", k)
+    print("objective function:", sum(x * c))
 
 ## Example problems
 def ex1():
@@ -251,19 +396,22 @@ def ex2():
     # solution f = -15000, x_star = (300, 300, ...)
     return (A, b, c)
 
+
 def ex3():
-    c = np.array([-300,-500,-200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    A = np.array([
-    [ 10, 7.5,   4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],        #C1
-    [  0,  10,   0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],        #C2
-    [0.5, 0.4, 0.5, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],        #C3
-    [  0, 0.4,   0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],        #C4
-    [0.5, 0.1, 0.5, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],        #C5
-    [0.4, 0.2, 0.4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],        #C6
-    [  1, 1.5, 0.5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],        #C7
-    [  1,   0,   0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],        #C8
-    [  0,   1,   0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],        #C9
-    [  0,   0,   1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]         #C10
-])
+    c = np.array([-300, -500, -200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    A = np.array(
+        [
+            [10, 7.5, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # C1
+            [0, 10, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],  # C2
+            [0.5, 0.4, 0.5, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],  # C3
+            [0, 0.4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],  # C4
+            [0.5, 0.1, 0.5, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],  # C5
+            [0.4, 0.2, 0.4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],  # C6
+            [1, 1.5, 0.5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],  # C7
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # C8
+            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # C9
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],  # C10
+        ]
+    )
     b = np.array([4350, 2500, 280, 140, 280, 140, 700, 300, 180, 400])
     return (A, b, c)
