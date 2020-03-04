@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import linprog
-from sparse_interior import create_sparse_matrix, rowcol_to_sparse
+from sparse_interior import create_sparse_matrix, rowcol_to_sparse, initial_vector_sparse
 from scipy.sparse.linalg import spsolve
 from scipy import sparse
 
@@ -246,7 +246,7 @@ def duality_gap(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
 def full_stepsize(
     x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
     ):
-    eta = 0.95
+    eta = 0.91
     # primal
     i = delta_x < 0
     alpha_primal_max = min(np.append(-x[i] / delta_x[i], 1))
@@ -273,8 +273,8 @@ def corrected(
 def scipy_solve(A, b, c):
     x0_bounds = (0, np.inf)
     x1_bounds = (0, np.inf)
-    res = linprog(c, A_ub=A, b_ub=b, options={"disp": True},)
-    print(res)
+    res = linprog(c, A_ub=A, b_ub=b, options={"disp": False},)
+    return res
 
 
 def interior(A, b, c, tol=1e-20):
@@ -321,6 +321,8 @@ def interior(A, b, c, tol=1e-20):
         )
         # go to the next iteration
         k += 1
+        print("objective function:", sum(x * c))
+
 
     # print output
     print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3))
@@ -329,7 +331,7 @@ def interior(A, b, c, tol=1e-20):
     print("objective function:", sum(x * c))
 
 
-def interior_sparse(A, b, c, tol=1e-20):
+def interior_sparse(A, b, c, cTlb, tol=1e-20):
     """[summary]
     
     Arguments:
@@ -346,8 +348,9 @@ def interior_sparse(A, b, c, tol=1e-20):
     e3 = tol
     m, n = np.shape(A)
     k = 0
-    (x, y, s) = initial_vector(A)
-    while check_optimality(A, b, c, x, y, s, e1, e2, e3, options='sparse') and k < 50000:
+    # (x, y, s) = initial_vector(A)
+    (x, y, s) = initial_vector_sparse(m, n)
+    while check_optimality(A, b, c, x, y, s, e1, e2, e3, options='sparse') and k < 5000:
         print("iteration : {}".format(k))
         # get direction
         (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted_sparse(A, b, c, x, y, s)
@@ -373,12 +376,13 @@ def interior_sparse(A, b, c, tol=1e-20):
         )
         # go to the next iteration
         k += 1
+        print("objective function:", sum(x * c))
 
     # print output
-    print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3))
-    print("x:\n", x)
+    print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3, options='sparse'))
+    # print("x:\n", x)
     print("k:\n", k)
-    print("objective function:", sum(x * c))
+    print("objective function: {:24f}".format((sum(x * c) - cTlb)[0]))
 
 ## Example problems
 def ex1():
@@ -415,3 +419,207 @@ def ex3():
     )
     b = np.array([4350, 2500, 280, 140, 280, 140, 700, 300, 180, 400])
     return (A, b, c)
+
+
+def benchmark():
+    name = [
+        '25FV47',  
+        '80BAU3B', 
+        'ADLITTLE',
+        'AFIRO',   
+        'AGG',     
+        'AGG2',    
+        'AGG3',    
+        'BANDM',   
+        'BEACONFD'
+        'BLEND',   
+        'BNL1',    
+        'BNL2',    
+        'BOEING1', 
+        'BOEING2', 
+        'BORE3D',  
+        'BRANDY',  
+        'CAPRI',   
+        'CYCLE',   
+        'CZPROB',  
+        'D2Q06C',  
+        'D6CUBE',  
+        'DEGEN2',  
+        'DEGEN3',  
+        'DFL001',  
+        'E226',    
+        'ETAMACRO',
+        'FFFFF800',
+        'FINNIS',  
+        'FIT1D',   
+        'FIT1P',   
+        'FIT2D',   
+        'FIT2P',   
+        'FORPLAN', 
+        'GANGES',  
+        'GFRD-PNC',
+        'GREENBEA',
+        'GREENBEB',
+        'GROW15',  
+        'GROW22',  
+        'GROW7',   
+        'ISRAEL',  
+        'KB2',     
+        'LOTFI',   
+        'MAROS',   
+        'MAROS-R7',
+        'MODSZK1', 
+        'NESM',    
+        'PEROLD',  
+        'PILOT',   
+        'PILOT.JA',
+        'PILOT.WE',
+        'PILOT4',  
+        'PILOT87', 
+        'PILOTNOV',
+        'QAP8',    
+        'QAP12',   
+        'QAP15',   
+        'RECIPE',  
+        'SC105',   
+        'SC205',   
+        'SC50A',   
+        'SC50B',   
+        'SCAGR25', 
+        'SCAGR7',  
+        'SCFXM1',  
+        'SCFXM2',  
+        'SCFXM3',  
+        'SCORPION',
+        'SCRS8',   
+        'SCSD1',   
+        'SCSD6',   
+        'SCSD8',   
+        'SCTAP1',  
+        'SCTAP2',  
+        'SCTAP3',  
+        'SEBA',    
+        'SHARE1B', 
+        'SHARE2B', 
+        'SHELL',   
+        'SHIP04L', 
+        'SHIP04S', 
+        'SHIP08L', 
+        'SHIP08S', 
+        'SHIP12L', 
+        'SHIP12S', 
+        'SIERRA',  
+        'STAIR',   
+        'STANDATA',
+        'STANDGUB',
+        'STANDMPS',
+        'STOCFOR1',
+        'STOCFOR2',
+        'STOCFOR3',
+        'TRUSS',   
+        'TUFF',    
+        'VTP.BASE',
+        'WOOD1P',  
+        'WOODW'   
+    ]
+    obj_values = [
+         5.5018458883E+03,
+        9.8723216072E+05,
+        2.2549496316E+05,
+        -4.6475314286E+02,
+        -3.5991767287E+07,
+        -2.0239252356E+07,
+        1.0312115935E+07,
+        -1.5862801845E+02,
+        3.3592485807E+04,
+        -3.0812149846E+01,
+        1.9776292856E+03,
+        1.8112365404E+03,
+        -3.3521356751E+02,
+        -3.1501872802E+02,
+        1.3730803942E+03,
+        1.5185098965E+03,
+        2.6900129138E+03,
+        -5.2263930249E+00,
+        2.1851966989E+06,
+        1.2278423615E+05,
+        3.1549166667E+02,
+        -1.4351780000E+03,
+        -9.8729400000E+02,
+        1.12664E+07,
+        -1.8751929066E+01,
+        -7.5571521774E+02,
+        5.5567961165E+05,
+        1.7279096547E+05,
+        -9.1463780924E+03,
+        9.1463780924E+03,
+        -6.8464293294E+04,
+        6.8464293232E+04,
+        -6.6421873953E+02,
+        -1.0958636356E+05,
+        6.9022359995E+06,
+        -7.2462405908E+07,
+        -4.3021476065E+06,
+        -1.0687094129E+08,
+        -1.6083433648E+08,
+        -4.7787811815E+07,
+        -8.9664482186E+05,
+        -1.7499001299E+03,
+        -2.5264706062E+01,
+        -5.8063743701E+04,
+        1.4971851665E+06,
+        3.2061972906E+02,
+        1.4076073035E+07,
+        -9.3807580773E+03,
+        -5.5740430007E+02,
+        -6.1131344111E+03,
+        -2.7201027439E+06,
+        -2.5811392641E+03,
+        3.0171072827E+02,
+        -4.4972761882E+03,
+        2.0350000000E+02,
+        5.2289435056E+02,
+        1.0409940410E+03,
+        -2.6661600000E+02,
+        -5.2202061212E+01,
+        -5.2202061212E+01,
+        -6.4575077059E+01,
+        -7.0000000000E+01,
+        -1.4753433061E+07,
+        -2.3313892548E+06,
+        1.8416759028E+04,
+        3.6660261565E+04,
+        5.4901254550E+04,
+        1.8781248227E+03,
+        9.0429998619E+02,
+        8.6666666743E+00,
+        5.0500000078E+01,
+        9.0499999993E+02,
+        1.4122500000E+03,
+        1.7248071429E+03,
+        1.4240000000E+03,
+        1.5711600000E+04,
+        -7.6589318579E+04,
+        -4.1573224074E+02,
+        1.2088253460E+09,
+        1.7933245380E+06,
+        1.7987147004E+06,
+        1.9090552114E+06,
+        1.9200982105E+06,
+        1.4701879193E+06,
+        1.4892361344E+06,
+        1.5394362184E+07,
+        -2.5126695119E+02,
+        1.2576995000E+03,
+        '(see NOTES)',
+        1.4060175000E+03,
+        -4.1131976219E+04,
+        -3.9024408538E+04,
+        -3.9976661576E+04,
+        4.5881584719E+05,
+        2.9214776509E-01,
+        1.2983146246E+05,
+        1.4429024116E+00,
+        1.3044763331E+00,
+    ]
+    return name

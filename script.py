@@ -4,14 +4,7 @@ from scipy import sparse
 from scipy.sparse.linalg import spsolve
 
 from main import *
-from sparse_interior import (
-    create_sparse_eliminate,
-    create_sparse_matrix,
-    initial_vector_sparse,
-    load_data_mps,
-    print_information_sparse,
-    rowcol_to_sparse,
-)
+from sparse_interior import *
 
 
 def test_load_example_sparse():
@@ -89,24 +82,15 @@ def test_non_sparse():
     interior(A, b, c)
 
 
-def resize_parameter(vector):
-    row, col = np.shape(vector)
-    n = max(row, col)
-    if row != n or col != 1:
-        vector = vector.T
-    return vector
-
-
 def test_main_interior_sparse():
-    # f, i, j, k, b, n, m = load_data_mps("25FV47.mat")
-    # f, i, j, k, b, n, m = load_data_mps("80BAU3B.mat")
-    c, i, j, k, b, n, m = load_data_mps("ADLITTLE.mat")
-    # f, i, j, k, b, n, m = test_load_example_sparse()
-    c = resize_parameter(c)
-    b = resize_parameter(b)
-    A = sparse.csc_matrix((k, (i, j)))
-    interior_sparse(A, b, c)
-
+    Name = benchmark()
+    name = Name[2]
+    A, b, c, cTb = create_problem_from_mps(name)
+    res = scipy_solve(A, b, c)
+    print("objective function from scipy: {0}".format(res.fun))
+    interior_sparse(A, b, c, cTlb=cTb, tol=1e-8)
+    # print("c^Tx: {:26d}".format(cTb))
+    print(Name)
 
 if __name__ == "__main__":
     # test_non_sparse()

@@ -1,2 +1,9 @@
 venv
 .vscode
+.pytest_cache
+25FV47.SIP.gz
+.DS_Store
+__pycache__/linearprogramming.cpython-38.pyc
+__pycache__/main.cpython-38.pyc
+__pycache__/sparse.cpython-38.pyc
+__pycache__/sparse_interior.cpython-38.pyc

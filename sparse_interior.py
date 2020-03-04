@@ -14,11 +14,13 @@ def create_sparse_eliminate(A, b, f, x, y, s, options="non-sparse"):
     if options == "sparse":
         i, j, k, m, n = A
         # D^-2 where D^2 = X^-1 * S
-        r1, r2, r3 = main.test_create_rhs_predicted((i, j, k, m, n), b, f, x, y, s, options="seperated")
+        r1, r2, r3 = main.test_create_rhs_predicted(
+            (i, j, k, m, n), b, f, x, y, s, options="seperated"
+        )
         D_square_i = range(n)
         # print("D_i :", D_square_i)
         D_square_j = range(n)
-        D_square_k = (s/x)
+        D_square_k = s / x
         # print("D :", D_square_k)
         # -A^T
         row_index = j
@@ -47,7 +49,7 @@ def create_sparse_eliminate(A, b, f, x, y, s, options="non-sparse"):
         # print("# r2 ;", len(r2))
         # print("# r3 ;", len(r3))
         # right hand side
-        right_hand_side = np.append(r1-r3/x, r2)
+        right_hand_side = np.append(r1 - r3 / x, r2)
         # print(r1)
         print("**information in create sparse eliminate**")
         print("m :", m)
@@ -74,7 +76,7 @@ def create_sparse_matrix(A, x, s, options="non-sparse"):
     """
 
     if options == "non-sparse":
-        print("*********create sparse matrix (non-sparse)*********")
+        # print("*********create sparse matrix (non-sparse)*********")
         m, n = np.shape(A)
         i, j, k = sparse.find(A)
         # A transpose and I
@@ -94,28 +96,28 @@ def create_sparse_matrix(A, x, s, options="non-sparse"):
         col_index = np.append(col_index, range(m + n, m + 2 * n))
         values = np.append(values, x)
         # check
-        print("sparse matrix non-zero element :")
-        print("row    :", len(row_index))
-        print("col    :", len(col_index))
-        print("values :", len(values))
+        # print("sparse matrix non-zero element :")
+        # print("row    :", len(row_index))
+        # print("col    :", len(col_index))
+        # print("values :", len(values))
         return sparse.coo_matrix(
             (values, (row_index, col_index)), shape=(m + 2 * n, m + 2 * n)
         )
         # return sparse.coo_matrix((values, (row_index, col_index)))
     elif options == "sparse":
-        print("***create sparse matrix (sparse)***")
+        # print("***create sparse matrix (sparse)***")
         try:
             i, j, k, m, n = A
         except:
             i, j, k = sparse.find(A)
             m, n = np.shape(A)
-        print("row              :", len(i))
-        print("col              :", len(j))
-        print("values           :", len(k))
-        print("variables        :", n)
-        print("constraints      :", m)
-        print("number of row    :", max(i))
-        print("number of column :", max(j))
+        # print("row              :", len(i))
+        # print("col              :", len(j))
+        # print("values           :", len(k))
+        # print("variables        :", n)
+        # print("constraints      :", m)
+        # print("number of row    :", max(i))
+        # print("number of column :", max(j))
         # A transpose and I
         row_index = np.append(j, range(0, n))
         col_index = np.append(i + n, range(m + n, m + 2 * n))
@@ -132,22 +134,20 @@ def create_sparse_matrix(A, x, s, options="non-sparse"):
         row_index = np.append(row_index, range(m + n, m + 2 * n))
         col_index = np.append(col_index, range(m + n, m + 2 * n))
         values = np.append(values, x)
-        print("****full matrix version****")
-        print("variables           :", m + 2 * n)
-        print("constraints         :", m + 2 * n)
-        print("min index of row    :", min(row_index))
-        print("max index of row    :", max(row_index))
-        print("min index of column :", min(col_index))
-        print("max index of column :", max(col_index))
+        # print("****full matrix version****")
+        # print("variables           :", m + 2 * n)
+        # print("constraints         :", m + 2 * n)
+        # print("min index of row    :", min(row_index))
+        # print("max index of row    :", max(row_index))
+        # print("min index of column :", min(col_index))
+        # print("max index of column :", max(col_index))
         return sparse.csc_matrix(
             (values, (row_index, col_index)), shape=(m + 2 * n, m + 2 * n)
         )
         # return sparse.csc_matrix((values, (row_index, col_index)))
-    elif options == 'tosparse':
+    elif options == "tosparse":
         row_index, col_index, values, m, n = A
-        return sparse.csc_matrix(
-            (values, (row_index, col_index)), shape=(m, n)
-        )
+        return sparse.csc_matrix((values, (row_index, col_index)), shape=(m, n))
     else:
         raise Exception("options must be specific as sparse or non-sparse")
 
@@ -203,7 +203,7 @@ def load_data_mps(file_name):
         m {number} -- the number of constraints
     """
 
-    print("*******load data from mps********")
+    # print("*******load data from mps********")
     data = loadmat(file_name)
     return (
         data["f"],
@@ -213,6 +213,7 @@ def load_data_mps(file_name):
         data["b"],
         data["num_variables"][0][0],
         data["num_constraints"][0][0],
+        data["cTlb"][0][0]
     )
 
 
@@ -246,3 +247,19 @@ def initial_vector_sparse(m, n):
     s = np.random.randint(low=1, high=n, size=(n, 1))
     # print("sparse initial\n", x)
     return x, np.zeros((m, 1)), s
+
+
+def resize_parameter(vector):
+    row, col = np.shape(vector)
+    n = max(row, col)
+    if row != n or col != 1:
+        vector = vector.T
+    return vector
+
+
+def create_problem_from_mps(name):
+    c, i, j, k, b, n, m, cTb = load_data_mps("{}.mat".format(name))
+    c = resize_parameter(c)
+    b = resize_parameter(b)
+    A = sparse.csc_matrix((k, (i, j)))
+    return A, b, c, cTb
