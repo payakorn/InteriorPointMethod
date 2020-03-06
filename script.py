@@ -1,3 +1,5 @@
+import time
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import sparse
@@ -82,15 +84,65 @@ def test_non_sparse():
     interior(A, b, c)
 
 
+def create_text_file():
+    f = open("guru99.txt", "w+")
+    for i in range(10):
+        f.write("This is line %d\r\n" % (i + 1))
+    f.close()
+
+
 def test_main_interior_sparse():
-    Name = benchmark()
-    name = Name[2]
-    A, b, c, cTb = create_problem_from_mps(name)
-    res = scipy_solve(A, b, c)
-    print("objective function from scipy: {0}".format(res.fun))
-    interior_sparse(A, b, c, cTlb=cTb, tol=1e-8)
-    # print("c^Tx: {:26d}".format(cTb))
-    print(Name)
+    Name, obj_Netlib = benchmark()
+    Name_work = benchmark_work()
+    # print(Name_work)
+    name_benchmark = {}
+
+    # Dict name
+    j=0
+    for name in Name:
+        name_benchmark[name] = obj_Netlib[j]
+        j+=1
+
+    line = open("conclusion.txt", "w+")
+    line.write(
+        "{0:15s} {1:15s} {2:15s} {3:15s} {4:15s} {5:15s}".format(
+            "Name", "Obj fun", "Interi time ", "Scipy time", "Interi", "Scipy"
+        )
+    )
+    for i in Name_work:
+        print(i)
+        A, b, c, cTb = create_problem_from_mps(i)
+
+        # Scipy
+        start_time1 = time.time()
+        res = scipy_solve(A, b, c)
+        end_time1 = time.time()
+
+        # Interior
+        start_time2 = time.time()
+        # obj_fun = interior_sparse(A=A, b=b, c=c, cTlb=cTb, tol=1e-8)
+        obj_fun = new_interior_sparse(Aeq=A, beq=b, c=c, tol=1e-8)
+        end_time2 = time.time()
+
+        # information
+        print("File name     : {}".format(i))
+        print("obj fun Netlib: {0}".format(name_benchmark[i]))
+        print("obj fun interi: {0}".format(obj_fun))
+        print("obj fun scipy : {0}".format(res.fun))
+        print("interior time : {}".format(end_time2 - start_time2))
+        print("scipy    time : {}".format(end_time1 - start_time1))
+        line.write(
+            "{0:15s} {1:15.2f} {2:15.2f} {3:15.2f} {4:15.2f} {5:15.2f}".format(
+                i,
+                name_benchmark[i],
+                end_time2 - start_time2,
+                end_time1 - start_time1,
+                obj_fun,
+                res.fun,
+            )
+        )
+    line.close()
+
 
 if __name__ == "__main__":
     # test_non_sparse()

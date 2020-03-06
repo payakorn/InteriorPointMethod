@@ -204,7 +204,7 @@ def load_data_mps(file_name):
     """
 
     # print("*******load data from mps********")
-    data = loadmat(file_name)
+    data = loadmat("benchmarks/{}".format(file_name))
     return (
         data["f"],
         data["A"]["i"][0][0][0],
