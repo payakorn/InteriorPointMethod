@@ -3,10 +3,15 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import sparse
+from scipy.optimize import linprog
 from scipy.sparse.linalg import spsolve
 
 from main import *
 from sparse_interior import *
+
+# import warnings
+
+# warnings.filterwarnings('error')
 
 
 def test_load_example_sparse():
@@ -80,48 +85,85 @@ def test_spsolve():
 
 
 def test_non_sparse():
+    """test run interior point for input non-sparse matrix
+    min c^Tx
+    s.t. Ax = b
+          x >= 0
+    """
     A, b, c = ex3()
     interior(A, b, c)
 
 
-def create_text_file():
-    f = open("guru99.txt", "w+")
-    for i in range(10):
-        f.write("This is line %d\r\n" % (i + 1))
-    f.close()
+def convert_inf_to_none(x):
+    if x[0] == np.inf or x[0] == -np.inf:
+        return None
+    else:
+        return x[0]
+
+
+def create_bound_for_scipy(lb, ub):
+    """scipy require different bound structure i.e. [( (lb_1, ub_1),...,(lb_n, ub_n) )]
+    
+    Arguments:
+        lb {[numpy array]} -- [description]
+        ub {[numpy array]} -- [description]
+    
+    Returns:
+        [bound in scipy structure] -- [description]
+    """
+    lb = tuple(map(convert_inf_to_none, lb))
+    ub = tuple(map(convert_inf_to_none, ub))
+    return list((lb[i], ub[i]) for i in range(len(ub)))
 
 
 def test_main_interior_sparse():
+    """test interior point method with benchmarks in the form
+    min c^Tx
+    s.t. Aineq * x <= bineq
+          Aeq * x   = beq
+          lb <= x <= ub
+    """
+    bound = None
     Name, obj_Netlib = benchmark()
     Name_work = benchmark_work()
-    # print(Name_work)
     name_benchmark = {}
 
     # Dict name
-    j=0
+    j = 0
     for name in Name:
         name_benchmark[name] = obj_Netlib[j]
-        j+=1
+        j += 1
 
-    line = open("conclusion.txt", "w+")
+    line = open("conclusion1.txt", "w")
     line.write(
-        "{0:15s} {1:15s} {2:15s} {3:15s} {4:15s} {5:15s}".format(
-            "Name", "Obj fun", "Interi time ", "Scipy time", "Interi", "Scipy"
+        "{0:17s} {2:>17s} {3:>20s} {1:>20s} {4:>20s} {5:>20s}\r\n".format(
+            "Name", "Obj fun", "Interi time", "Scipy time", "Interi", "Scipy"
         )
     )
-    for i in Name_work:
-        print(i)
-        A, b, c, cTb = create_problem_from_mps(i)
-
+    line.close()
+    for i in Name_work[1:12]:
+        print('\n\nProblem name: {}'.format(i))
+        c, Aineq, bineq, Aeq, beq, lb, ub = create_problem_from_mps_matlab(i)
         # Scipy
         start_time1 = time.time()
-        res = scipy_solve(A, b, c)
+        bounds = create_bound_for_scipy(lb, ub)
+        res = linprog(
+            c=c,
+            A_ub=Aineq,
+            b_ub=bineq,
+            A_eq=Aeq,
+            b_eq=beq,
+            bounds=bounds,
+            method="interior-point",
+            options={"disp": True},
+        )
+        # res = np.nan
         end_time1 = time.time()
 
         # Interior
         start_time2 = time.time()
         # obj_fun = interior_sparse(A=A, b=b, c=c, cTlb=cTb, tol=1e-8)
-        obj_fun = new_interior_sparse(Aeq=A, beq=b, c=c, tol=1e-8)
+        obj_fun = new_interior_sparse(c=c, Aineq=Aineq, bineq=bineq, Aeq=Aeq, beq=beq, lb=lb, ub=ub, tol=1e-6)
         end_time2 = time.time()
 
         # information
@@ -129,21 +171,59 @@ def test_main_interior_sparse():
         print("obj fun Netlib: {0}".format(name_benchmark[i]))
         print("obj fun interi: {0}".format(obj_fun))
         print("obj fun scipy : {0}".format(res.fun))
+        # print("obj fun scipy : {0}".format(np.nan))
         print("interior time : {}".format(end_time2 - start_time2))
         print("scipy    time : {}".format(end_time1 - start_time1))
+        line = open("conclusion1.txt", "a")
         line.write(
-            "{0:15s} {1:15.2f} {2:15.2f} {3:15.2f} {4:15.2f} {5:15.2f}".format(
+            "{0:17s} {2:17.2f} {3:>20.2f} {1:20.2f} {4:20.2f} {5:20.2f}\r\n".format(
                 i,
                 name_benchmark[i],
                 end_time2 - start_time2,
                 end_time1 - start_time1,
                 obj_fun,
                 res.fun,
+                # np.nan
             )
         )
-    line.close()
+        line.close()
+
+
+def test_load_matrix():
+    c, Aineq, bineq, Aeq, beq, lb, ub = load_data_mps_matlab(file_name='BANDM')
+    print(f'{Aineq = }')
+    print(f'{sparse.issparse(Aineq) = }')
+    print(f'{Aeq = }')
+    print(f'{sparse.issparse(Aeq) = }')
+    print(f'{len(bineq) = }, shape={np.shape(bineq)}')
+    print(f'{len(beq) = }, shape={np.shape(beq)}')
+    print(f'{len(lb) = }, shape={np.shape(lb)}')
+    print(f'{len(ub) = }, shape={np.shape(ub)}')
+    print(f'{len(c) = }, shape={np.shape(c)}')
+
+
+def check_bound():
+    Name, obj_Netlib = benchmark()
+    Name_work = benchmark_work()
+    for i in Name_work:
+        c, Aineq, bineq, Aeq, beq, lb, ub = load_data_mps_matlab(file_name=i)
+        ub = np.array([j[0] for j in ub])
+        n = len(lb)
+        lower_bound_zeros =  np.count_nonzero(np.array([j[0] for j in lb]) == 0)
+        upper_bound_inf =  sum(np.isinf(ub))
+        print('Name:', i)
+        print('lower bound zeros:', lower_bound_zeros)
+        print('upper bound inf:', upper_bound_inf)
+        if lower_bound_zeros == n:
+            print('no lower bound')
+        else:
+            print('has lower bound')
+        if upper_bound_inf == n:
+            print('no upper bound\n')
+        else:
+            print('has upper bound\n')
 
 
 if __name__ == "__main__":
-    # test_non_sparse()
     test_main_interior_sparse()
+    # check_bound()

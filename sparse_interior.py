@@ -2,61 +2,11 @@ import numpy as np
 from scipy import sparse
 from scipy.io import loadmat
 
-import main
+# from main import *
 
 
 def rowcol_to_sparse(i, j, k, m, n):
     return sparse.coo_matrix((k, (i, j)), shape=(m, n))
-
-
-def create_sparse_eliminate(A, b, f, x, y, s, options="non-sparse"):
-    print("****create sparse elimination*****")
-    if options == "sparse":
-        i, j, k, m, n = A
-        # D^-2 where D^2 = X^-1 * S
-        r1, r2, r3 = main.test_create_rhs_predicted(
-            (i, j, k, m, n), b, f, x, y, s, options="seperated"
-        )
-        D_square_i = range(n)
-        # print("D_i :", D_square_i)
-        D_square_j = range(n)
-        D_square_k = s / x
-        # print("D :", D_square_k)
-        # -A^T
-        row_index = j
-        col_index = n + i
-        values = -k
-        # append
-        row_index = np.append(D_square_i, row_index)
-        col_index = np.append(D_square_j, col_index)
-        values = np.append(D_square_k, values)
-        # print("row index :", row_index)
-        # print("col index :", col_index)
-        # print("val index :", values)
-        # -A
-        i_index = n + i
-        j_index = j
-        k_index = -k
-        # append
-        row_index = np.append(row_index, i_index)
-        col_index = np.append(col_index, j_index)
-        values = np.append(values, k_index)
-        # check
-        # print("# row ;", len(row_index))
-        # print("# col ;", len(col_index))
-        # print("# values ;", len(values))
-        # print("# r1 ;", len(r1))
-        # print("# r2 ;", len(r2))
-        # print("# r3 ;", len(r3))
-        # right hand side
-        right_hand_side = np.append(r1 - r3 / x, r2)
-        # print(r1)
-        print("**information in create sparse eliminate**")
-        print("m :", m)
-        print("n :", n)
-        print("right hand side in elimination :", len(right_hand_side))
-        # return sparse.csr_matrix((values, (row_index, col_index)), shape=(m+n, m+n)), right_hand_side
-        return sparse.csr_matrix((values, (row_index, col_index))), right_hand_side
 
 
 def create_sparse_matrix(A, x, s, options="non-sparse"):
@@ -106,11 +56,11 @@ def create_sparse_matrix(A, x, s, options="non-sparse"):
         # return sparse.coo_matrix((values, (row_index, col_index)))
     elif options == "sparse":
         # print("***create sparse matrix (sparse)***")
-        try:
-            i, j, k, m, n = A
-        except:
-            i, j, k = sparse.find(A)
-            m, n = np.shape(A)
+        # try:
+        #     i, j, k, m, n = A
+        # except:
+        i, j, k = sparse.find(A)
+        m, n = np.shape(A)
         # print("row              :", len(i))
         # print("col              :", len(j))
         # print("values           :", len(k))
@@ -213,7 +163,7 @@ def load_data_mps(file_name):
         data["b"],
         data["num_variables"][0][0],
         data["num_constraints"][0][0],
-        data["cTlb"][0][0]
+        data["cTlb"][0][0],
     )
 
 
@@ -241,19 +191,20 @@ def print_information_sparse(f, i, j, k, b, n, m):
 
 
 def initial_vector_sparse(m, n):
-    # x = np.ones((n, 1))
+    x = np.ones((n, 1))
+    s = np.ones((n, 1))
     # x = np.random.rand(n, 1)
-    x = np.random.randint(low=1, high=n, size=(n, 1))
-    s = np.random.randint(low=1, high=n, size=(n, 1))
+    # x = np.random.randint(low=1, high=n, size=(n, 1))
+    # s = np.random.randint(low=1, high=n, size=(n, 1))
     # print("sparse initial\n", x)
-    return x, np.zeros((m, 1)), s
+    return x, np.ones((m, 1)), s
 
 
 def resize_parameter(vector):
     row, col = np.shape(vector)
     n = max(row, col)
     if row != n or col != 1:
-        vector = vector.T
+        vector = np.reshape(vector, (n, -1))
     return vector
 
 
@@ -263,3 +214,101 @@ def create_problem_from_mps(name):
     b = resize_parameter(b)
     A = sparse.csc_matrix((k, (i, j)))
     return A, b, c, cTb
+
+
+def load_data_mps_full(file_name):
+
+    # print("*******load data from mps********")
+    data = loadmat("benchmarks_full/{}".format(file_name))
+    c = data["c"]
+    try:
+        Aineq_i = data["Aineq"]["i"][0][0][0]
+        Aineq_j = data["Aineq"]["j"][0][0][0]
+        Aineq_k = data["Aineq"]["k"][0][0][0]
+        if len(Aineq_i) == 0:
+            Aineq_i = None
+            Aineq_j = None
+            Aineq_k = None
+            bineq = None
+        else:
+            bineq = data["bineq"]
+    except:
+        Aineq_i = None
+        Aineq_j = None
+        Aineq_k = None
+        bineq = None
+    try:
+        Aeq_i = data["Aeq"]["i"][0][0][0]
+        Aeq_j = data["Aeq"]["j"][0][0][0]
+        Aeq_k = data["Aeq"]["k"][0][0][0]
+        if len(Aeq_i) == 0:
+            Aeq_i = None
+            Aeq_j = None
+            Aeq_k = None
+            beq = None
+        else:
+            beq = data["beq"]
+    except:
+        Aeq_i = None
+        Aeq_j = None
+        Aeq_k = None
+        beq = None
+    lb = data["lb"]
+    ub = data["ub"]
+    return c, Aineq_i, Aineq_j, Aineq_k, bineq, Aeq_i, Aeq_j, Aeq_k, beq, lb, ub
+
+
+def create_problem_from_mps_full(name):
+    (
+        c,
+        Aineq_i,
+        Aineq_j,
+        Aineq_k,
+        bineq,
+        Aeq_i,
+        Aeq_j,
+        Aeq_k,
+        beq,
+        lb,
+        ub,
+    ) = load_data_mps_full("{}.mat".format(name))
+    c = resize_parameter(c)
+    lb = resize_parameter(lb)
+    ub = resize_parameter(ub)
+    n = len(c)
+    if Aineq_i is not None:
+        m_ineq = len(bineq)
+        Aineq = sparse.csc_matrix((Aineq_k, (Aineq_i, Aineq_j)), shape=((m_ineq, n)))
+        bineq = resize_parameter(bineq)
+    else:
+        Aineq = None
+    if Aeq_i is not None:
+        m_eq = len(beq)
+        Aeq = sparse.csc_matrix((Aeq_k, (Aeq_i, Aeq_j)), shape=((m_eq, n)))
+        beq = resize_parameter(beq)
+    else:
+        Aeq = None
+    return c, Aineq, bineq, Aeq, beq, lb, ub
+
+
+def create_problem_from_mps_matlab(name):
+    c, Aineq, bineq, Aeq, beq, lb, ub = load_data_mps_matlab("{}.mat".format(name))
+    if len(bineq) == 0:
+        Aineq = None
+        bineq = None
+    if len(beq) == 0:
+        Aeq = None
+        beq = None
+    return c, Aineq, bineq, Aeq, beq, lb, ub
+
+
+def load_data_mps_matlab(file_name):
+    data = loadmat("benchmarks_full/{}".format(file_name))
+    Aineq = data["data"]["Aineq"][0][0]
+    Aeq = data["data"]["Aeq"][0][0]
+    bineq = data["data"]["bineq"][0][0]
+    beq = data["data"]["beq"][0][0]
+    lb = data["data"]["lb"][0][0]
+    ub = data["data"]["ub"][0][0]
+    c = data["data"]["f"][0][0]
+    return c, Aineq, bineq, Aeq, beq, lb, ub

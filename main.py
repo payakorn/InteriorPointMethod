@@ -7,6 +7,7 @@ from sparse_interior import (
 )
 from scipy.sparse.linalg import spsolve
 from scipy import sparse
+import matplotlib.pyplot as plt
 
 
 def create_matrix(A, x, y, s, **options):
@@ -20,30 +21,54 @@ def create_matrix(A, x, y, s, **options):
     return matrix
 
 
+def create_sparse_eliminate(A, b, f, x, y, s, options="non-sparse"):
+    print("****create sparse elimination*****")
+    if options == "sparse":
+        i, j, k, m, n = A
+        # D^-2 where D^2 = X^-1 * S
+        r1, r2, r3 = test_create_rhs_predicted(
+            (i, j, k, m, n), b, f, x, y, s, options="seperated"
+        )
+        D_square_i = range(n)
+        # print("D_i :", D_square_i)
+        D_square_j = range(n)
+        D_square_k = s / x
+        # print("D :", D_square_k)
+        # -A^T
+        row_index = j
+        col_index = n + i
+        values = -k
+        # append
+        row_index = np.append(D_square_i, row_index)
+        col_index = np.append(D_square_j, col_index)
+        values = np.append(D_square_k, values)
+        # -A
+        i_index = n + i
+        j_index = j
+        k_index = -k
+        # append
+        row_index = np.append(row_index, i_index)
+        col_index = np.append(col_index, j_index)
+        values = np.append(values, k_index)
+        # right hand side
+        right_hand_side = np.append(r1 - r3 / x, r2)
+        # print(r1)
+        print("**information in create sparse eliminate**")
+        print("m :", m)
+        print("n :", n)
+        print("right hand side in elimination :", len(right_hand_side))
+        # return sparse.csr_matrix((values, (row_index, col_index)), shape=(m+n, m+n)), right_hand_side
+        return sparse.csr_matrix((values, (row_index, col_index))), right_hand_side
+    elif options == "matrix":
+        pass
+
+
 def test_create_rhs_predicted(A, b, c, x, y, s, options="non-sparse"):
-    # print("shape A :", np.shape(A))
-    # print("shape b", np.shape(b))
-    # print("shape x", np.shape(x))
-    # print("shape y", np.shape(y))
-    # print("shape s", np.shape(s))
-    # c = np.linalg.transpose(c)
-    i, j, k, m, n = A
-    A = rowcol_to_sparse(i, j, k, m, n)
-    rb = A @ x
-    # print(rb)
-    # print("shape c :", np.shape(c))
-    # print("shape s :", np.shape(s))
-    # print("shape y :", np.shape(y))
-    # print("shape sparse.coo_matrix.transpose(A) @ y :", np.shape(sparse.coo_matrix.transpose(A) @ y))
-    # print(c)
+    rb = A @ x - b
     rowlen_c, collen_c = np.shape(c)
-    # print(np.add(sparse.coo_matrix.transpose(A) @ y + s, c.T))
-    rc = sparse.coo_matrix.transpose(A) @ y + s - c.T
-    # rc = sparse.csc_matrix.transpose(A) @ y
-    # print("print : rc = \n")
-    # print(rc)
+    # rc = sparse.csc_matrix.transpose(A) @ y + s - c
+    rc = A.T @ y + s - c
     r3 = x * s
-    # print(r3)
     if options == "seperated":
         return rc, rb, r3
     elif options == "full":
@@ -60,7 +85,7 @@ def create_rhs_predicted(A, b, c, x, y, s, options="non-sparse"):
             rb = np.matmul(A, x) - b
             rc = np.matmul(A.T, y) + s - c
         except:
-            rb = A @ x
+            rb = A @ x - b
             rc = A.T @ y + s - c
         r3 = x * s
         right_hand_side = np.block([[-rc], [-rb], [-r3]])
@@ -69,7 +94,8 @@ def create_rhs_predicted(A, b, c, x, y, s, options="non-sparse"):
         i, j, k, m, n = A
         A = rowcol_to_sparse(i, j, k, m, n)
         rb = A @ x - b
-        rc = sparse.coo_matrix.transpose(A) @ y + s - c
+        # rc = sparse.coo_matrix.transpose(A) @ y + s - c
+        rc = A.T @ y + s - c
         r3 = x * s
         return rc, rb, r3
     elif options == "full":
@@ -124,6 +150,10 @@ def create_rhs_corrected(
         r4 = (
             (x * s) + (delta_x_aff * delta_s_aff) - (centering * mu_k * np.ones((n, 1)))
         )
+        # print('x*s:', max(x*s))
+        # print('delta x*delta s aff:', max(delta_x_aff*delta_s_aff))
+        # print('centering:', centering)
+        # print('mu_k:', mu_k)
         row, col = np.shape(delta_x_aff)
         right_hand_side = np.block([[-rc], [-rb], [-r4]])
         return right_hand_side
@@ -131,15 +161,16 @@ def create_rhs_corrected(
 
 def check_optimality(A, b, c, x, y, s, e1, e2, e3, options="non-sparse"):
     if options == "non-sparse":
-        primal = e1 * (1 + np.linalg.norm(b)) <= np.linalg.norm(np.matmul(A, x) - b)
-        dual = e2 * (1 + np.linalg.norm(c)) <= np.linalg.norm(np.matmul(A.T, y) + s - c)
-        duality_gap_check = e3 >= (np.dot(x.T, s))
+        # primal = e1 * (1 + np.linalg.norm(b)) < np.linalg.norm(np.matmul(A, x) - b)
+        primal = e1 * (1 + np.linalg.norm(b)) < np.linalg.norm(A @ x - b)
+        dual = e2 * (1 + np.linalg.norm(c)) < np.linalg.norm(np.matmul(A.T, y) + s - c)
+        duality_gap_check = e3 < (np.dot(x.T, s))
         return primal or dual or duality_gap_check
     elif options == "sparse":
-        primal = e1 * (1 + np.linalg.norm(b)) <= np.linalg.norm(A @ x - b)
-        dual = e2 * (1 + np.linalg.norm(c)) <= np.linalg.norm(A.T @ y + s - c)
-        duality_gap_check = e3 >= (np.dot(x.T, s))
-        return primal or dual or duality_gap_check
+        primal = e1 * (1 + np.linalg.norm(b)) < np.linalg.norm(A @ x - b)
+        dual = e2 * (1 + np.linalg.norm(c)) < np.linalg.norm(A.T @ y + s - c)
+        duality_gap_check = e3 < (np.dot(x.T, s))
+        return primal or dual or duality_gap_check[0][0]
 
 
 def solve_linear(A, b, method="scipy"):
@@ -163,18 +194,39 @@ def direction_predicted(A, b, c, x, y, s):
     return (delta_x_aff, delta_y_aff, delta_s_aff)
 
 
-def direction_predicted_sparse(A, b, c, x, y, s):
-    m, n = np.shape(A)
-    i, j, k = sparse.find(A)
-    matrix = create_sparse_matrix(A, x, s, options="sparse")
-    right_hand_side = create_rhs_predicted(
-        (i, j, k, m, n), b, c, x, y, s, options="full"
-    )
-    direction_vec = solve_linear(matrix, right_hand_side, method="sparse")
-    delta_x_aff = direction_vec[0:n]
-    delta_y_aff = direction_vec[n : n + m]
-    delta_s_aff = direction_vec[m + n :]
-    return (delta_x_aff, delta_y_aff, delta_s_aff)
+def direction_predicted_sparse(A, b, c, x, y, s, method="full"):
+    if method == "full":
+        m, n = np.shape(A)
+        i, j, k = sparse.find(A)
+        matrix = create_sparse_matrix(A, x, s, options="sparse")
+        right_hand_side = create_rhs_predicted(
+            (i, j, k, m, n), b, c, x, y, s, options="full"
+        )
+        direction_vec = solve_linear(matrix, right_hand_side, method="sparse")
+        try:
+            delta_x_aff = direction_vec[0:n]
+            delta_y_aff = direction_vec[n : n + m]
+            delta_s_aff = direction_vec[m + n :]
+        except:
+            return None, None, None
+        return (delta_x_aff, delta_y_aff, delta_s_aff)
+    elif method == "eliminate":
+        m, n = np.shape(A)
+        matrix, rsh, r3 = get_eliminate_system(A, b, c, x, y, s)
+        direction_x_y = solve_linear(matrix, rsh, method="sparse")
+        delta_x_aff = direction_x_y[0:n]
+        delta_y_aff = direction_x_y[n : n + m]
+        delta_s_aff = (-s / x * delta_x_aff) - (r3 / x)
+        return (delta_x_aff, delta_y_aff, delta_s_aff)
+    elif method == "normal":
+        r1, r2, r3 = test_create_rhs_predicted(A, b, c, x, y, s, options="seperated")
+        D_square = sparse.diags(list((x[i] / s[i])[0] for i in range(len(x))))
+        B = A @ D_square @ A.T
+        rhs = -r2 - A @ D_square @ (r1 - r3 / x)
+        delta_y_aff = solve_linear(B, rhs, method="sparse")
+        delta_x_aff = D_square @ A.T @ delta_y_aff + D_square @ (r1 - r3 / x)
+        delta_s_aff = (-s * delta_x_aff / x) - (r3 / x)
+        return delta_x_aff, delta_y_aff, delta_s_aff
 
 
 def direction_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
@@ -192,26 +244,36 @@ def direction_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff)
     return delta_x, delta_y, delta_s
 
 
-def direction_corrected_sparse(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
-    m, n = np.shape(A)
-    i, j, k = sparse.find(A)
-    matrix = create_sparse_matrix(A, x, s, options="sparse")
-    right_hand_side = create_rhs_corrected(
-        (i, j, k, m, n),
-        b,
-        c,
-        x,
-        y,
-        s,
-        delta_x_aff,
-        delta_y_aff,
-        delta_s_aff,
-        options="full",
-    )
-    direction_vec = solve_linear(matrix, right_hand_side, method="sparse")
-    delta_x_aff = direction_vec[0:n]
-    delta_y_aff = direction_vec[n : n + m]
-    delta_s_aff = direction_vec[m + n :]
+def direction_corrected_sparse(
+    A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, method="full"
+):
+    if method == "full":
+        m, n = np.shape(A)
+        i, j, k = sparse.find(A)
+        matrix = create_sparse_matrix(A, x, s, options="sparse")
+        right_hand_side = create_rhs_corrected(
+            (i, j, k, m, n),
+            b,
+            c,
+            x,
+            y,
+            s,
+            delta_x_aff,
+            delta_y_aff,
+            delta_s_aff,
+            options="full",
+        )
+        direction_vec = solve_linear(matrix, right_hand_side, method="sparse")
+        delta_x_aff = direction_vec[0:n]
+        delta_y_aff = direction_vec[n : n + m]
+        delta_s_aff = direction_vec[m + n :]
+    elif method == "eliminate":
+        m, n = np.shape(A)
+        matrix, rhs, r3 = get_eliminate_system(A, b, c, x, y, s)
+        direction_vec = solve_linear(matrix, rhs, method="sparse")
+        delta_x_aff = direction_vec[0:n]
+        delta_y_aff = direction_vec[n : n + m]
+        delta_s_aff = -s / x * delta_x_aff - r3 / x
     return (delta_x_aff, delta_y_aff, delta_s_aff)
 
 
@@ -242,31 +304,297 @@ def initial_vector(A):
 
 def predicted_stepsize(delta_x_aff, delta_y_aff, delta_s_aff, x, s):
     # primal
-    i = delta_x_aff < 0
-    alpha_primal = min(np.append(-x[i] / delta_x_aff[i], 1)) if any(i) else 1
+    try:
+        i = delta_x_aff < 0
+        alpha_primal = min(np.append(-x[i] / delta_x_aff[i], 1)) if any(i) else 1
+    except RuntimeWarning:
+        raise "Here!! delta aff"
+        print("\nException here in predicted_stepsize!!!!!!!!!!!!!!!!!\n")
+        alpha_primal = 1
+
+    # i = delta_x_aff < 0
+    # alpha_primal = min(np.append(-x[i] / delta_x_aff[i], 1)) if any(i) else 1
     # dual
     i = delta_s_aff < 0
     alpha_dual = min(np.append(-s[i] / delta_s_aff[i], 1)) if any(i) else 1
+
+    # print("alpha primal:", alpha_primal, "alpha dual:", alpha_dual)
     return (alpha_primal, alpha_dual)
 
 
-def predicted(x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
-    (alpha_primal, alpha_dual) = predicted_stepsize(
-        delta_x_aff=delta_x_aff,
-        delta_y_aff=delta_y_aff,
-        delta_s_aff=delta_s_aff,
+def step_size(x, y, s, delta_aff=None, delta=None, lb=None, ub=None):
+    if delta_aff is not None:
+        delta_x_aff, delta_y_aff, delta_s_aff = delta_aff
+        if lb is None and ub is None:
+            try:
+                i = delta_x_aff < 0
+                alpha_primal = (
+                    min(np.append(-x[i] / delta_x_aff[i], 1)) if any(i) else 1
+                )
+            except Warning:
+                alpha_primal = 1
+            # dual
+            try:
+                i = delta_s_aff < 0
+                alpha_dual = min(np.append(-s[i] / delta_s_aff[i], 1)) if any(i) else 1
+            except:
+                alpha_dual = 1
+            return (alpha_primal, alpha_dual)
+        elif lb is None:
+            # 0 <= x <= ub
+            # delta_x_aff < 0
+            try:
+                i = delta_x_aff < 0
+                # alpha_primal_positive_upper = (
+                #     max((ub[i] - x[i]) / delta_x_aff[i]) if any(i) else 1
+                # )
+                alpha_primal_positive_lower = (
+                    min((-x[i]) / delta_x_aff[i]) if any(i) else 1
+                )
+            except:
+                # alpha_primal_positive_upper = 1
+                alpha_primal_positive_lower = 1
+            # delta_x_aff > 0
+            try:
+                j = delta_x_aff > 0
+                alpha_primal_negative_upper = (
+                    min((ub[j] - x[j]) / delta_x_aff[j]) if any(j) else 1
+                )
+                # alpha_primal_negative_lower = (
+                #     max((-x[j]) / delta_x_aff[j]) if any(j) else 1
+                # )
+            except:
+                alpha_primal_negative_upper = 1
+                # alpha_primal_negative_lower = 1
+            # min all
+            alpha_primal = min(
+                # alpha_primal_positive_upper,
+                alpha_primal_positive_lower,
+                alpha_primal_negative_upper,
+                # alpha_primal_negative_lower,
+                1,
+            )
+            # s >= 0
+            try:
+                k = delta_s_aff < 0
+                alpha_dual = min((-s[k]) / delta_s_aff[k]) if any(k) else 1
+                alpha_dual = min(alpha_dual, 1)
+            except:
+                alpha_dual = 1
+            return alpha_primal, alpha_dual
+        elif ub is None:
+            # lb <= x < Inf
+            # delta_x_aff < 0
+            try:
+                i = delta_x_aff < 0
+                alpha_primal_positive_lower = (
+                    min((lb[i] - x[i]) / delta_x_aff[i]) if any(i) else 1
+                )
+            except:
+                alpha_primal_positive_lower = 1
+                # delta_x_aff > 0
+            # try:
+            #     j = delta_x_aff > 0
+            #     alpha_primal_negative_lower = (
+            #         max((lb[j] - x[j]) / delta_x_aff[j]) if any(j) else 1
+            #     )
+            # except:
+            #     alpha_primal_negative_lower = 1
+            # min all
+            alpha_primal = min(alpha_primal_positive_lower, 1,)
+            # except:
+            #     alpha_primal_positive_lower = 1
+            # s >= 0
+            try:
+                k = delta_s_aff < 0
+                alpha_dual = min((-s[k]) / delta_s_aff[k]) if any(k) else 1
+                alpha_dual = min(alpha_dual, 1)
+            except:
+                alpha_dual = 1
+            return alpha_primal, alpha_dual
+        else:
+            try:
+                i = delta_x_aff > 0
+                alpha_positive = (
+                    min(np.append((ub[i] - x[i]) / delta_x_aff[i], 1)) if any(i) else 1
+                )
+            except Warning:
+                alpha_positive = 1
+            try:
+                j = delta_x_aff < 0
+                alpha_negative = (
+                    min(np.append((lb[j] - x[j]) / delta_x_aff[j], 1)) if any(j) else 1
+                )
+            except Warning:
+                alpha_negative = 1
+            alpha_primal = min(alpha_positive, alpha_negative, 1)
+
+            # dual
+            try:
+                k = delta_s_aff < 0
+                alpha_dual = min(np.append(-s[k] / delta_s_aff[k], 1)) if any(k) else 1
+            except:
+                alpha_dual = 1
+            return alpha_primal, alpha_dual
+    elif delta is not None:
+        delta_x, delta_y, delta_s = delta
+        eta = 0.91
+        if lb is None and ub is None:
+            try:
+                i = delta_x < 0
+                alpha_primal = min(np.append(-x[i] / delta_x[i], 1)) if any(i) else 1
+                alpha_primal = min(1, eta * alpha_primal)
+            except Warning:
+                alpha_primal = 1
+            # dual
+            try:
+                i = delta_s_aff < 0
+                alpha_dual = min(np.append(-s[i] / delta_s[i], 1)) if any(i) else 1
+                alpha_dual = min(1, eta * alpha_dual)
+            except:
+                alpha_dual = 1
+            return (alpha_primal, alpha_dual)
+        elif lb is None:
+            # 0 <= x <= ub
+            # delta_x_aff < 0
+            try:
+                i = delta_x < 0
+                # alpha_primal_positive_upper = (
+                #     max((ub[i] - x[i]) / delta_x[i]) if any(i) else 1
+                # )
+                alpha_primal_positive_lower = min((-x[i]) / delta_x[i]) if any(i) else 1
+            except:
+                # alpha_primal_positive_upper = 1
+                alpha_primal_positive_lower = 1
+            # delta_x_aff > 0
+            try:
+                j = delta_x > 0
+                alpha_primal_negative_upper = (
+                    min((ub[j] - x[j]) / delta_x[j]) if any(j) else 1
+                )
+                # alpha_primal_negative_lower = max((-x[j]) / delta_x[j]) if any(j) else 1
+            except:
+                alpha_primal_negative_upper = 1
+                # alpha_primal_negative_lower = 1
+            # min all
+            alpha_primal = min(
+                # eta * alpha_primal_positive_upper,
+                eta * alpha_primal_positive_lower,
+                eta * alpha_primal_negative_upper,
+                # eta * alpha_primal_negative_lower,
+                1,
+            )
+            # s >= 0
+            try:
+                k = delta_s < 0
+                alpha_dual = min((-s[k]) / delta_s[k]) if any(k) else 1
+                alpha_dual = min(eta * alpha_dual, 1)
+            except:
+                alpha_dual = 1
+            return alpha_primal, alpha_dual
+        elif ub is None:
+            # lb <= x < Inf
+            # delta_x_aff < 0
+            try:
+                i = delta_x < 0
+                alpha_primal_positive_lower = (
+                    min((lb[i] - x[i]) / delta_x[i]) if any(i) else 1
+                )
+            except:
+                alpha_primal_positive_lower = 1
+            # delta_x_aff > 0
+            # try:
+            #     j = delta_x > 0
+            #     alpha_primal_negative_lower = (
+            #         max((lb[j] - x[j]) / delta_x[j]) if any(j) else 1
+            #     )
+            # except:
+            #     alpha_primal_negative_lower = 1
+            # min all
+            alpha_primal = min(eta * alpha_primal_positive_lower, 1,)
+            # s >= 0
+            try:
+                k = delta_s < 0
+                alpha_dual = min((-s[k]) / delta_s[k]) if any(k) else 1
+                alpha_dual = min(eta * alpha_dual, 1)
+            except:
+                alpha_dual = 1
+            return alpha_primal, alpha_dual
+        else:
+            try:
+                i = delta_x > 0
+                alpha_positive = (
+                    min(np.append((ub[i] - x[i]) / delta_x[i], 1)) if any(i) else 1
+                )
+            except Warning:
+                alpha_positive = 1
+            try:
+                j = delta_x < 0
+                alpha_negative = (
+                    min(np.append((lb[j] - x[j]) / delta_x[j], 1)) if any(j) else 1
+                )
+            except Warning:
+                alpha_negative = 1
+            alpha_primal = min(eta * alpha_positive, eta * alpha_negative, 1)
+
+            # dual
+            try:
+                k = delta_s < 0
+                alpha_dual = min(np.append(-s[k] / delta_s[k], 1)) if any(k) else 1
+                alpha_dual = min(eta * alpha_dual, 1)
+            except:
+                alpha_dual = 1
+            return alpha_primal, alpha_dual
+
+
+def predicted_stepsize_lb_ub(delta_x_aff, delta_y_aff, delta_s_aff, x, s, lb, ub):
+    alpha_primal, alpha_dual = step_size(
         x=x,
+        y=None,
         s=s,
+        delta_aff=(delta_x_aff, delta_y_aff, delta_s_aff),
+        lb=lb,
+        ub=ub,
     )
+    return alpha_primal, alpha_dual
+
+
+def predicted(x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=None):
+    if bound is None:
+        (alpha_primal, alpha_dual) = predicted_stepsize(
+            delta_x_aff=delta_x_aff,
+            delta_y_aff=delta_y_aff,
+            delta_s_aff=delta_s_aff,
+            x=x,
+            s=s,
+        )
+    else:
+        lb, ub = bound
+        (alpha_primal, alpha_dual) = predicted_stepsize_lb_ub(
+            delta_x_aff=delta_x_aff,
+            delta_y_aff=delta_y_aff,
+            delta_s_aff=delta_s_aff,
+            x=x,
+            s=s,
+            lb=lb,
+            ub=ub,
+        )
     x_aff = x + alpha_primal * delta_x_aff
     y_aff = y + alpha_dual * delta_y_aff
     s_aff = s + alpha_dual * delta_s_aff
     return (x_aff, y_aff, s_aff)
 
 
-def duality_gap(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff):
+def duality_gap(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=None):
     m, n = np.shape(A)
-    (x_aff, y_aff, s_aff) = predicted(x, y, s, delta_x_aff, delta_y_aff, delta_s_aff)
+    if bound is None:
+        (x_aff, y_aff, s_aff) = predicted(
+            x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+    else:
+        (x_aff, y_aff, s_aff) = predicted(
+            x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=bound
+        )
     mu_aff = np.dot(x_aff.T, s_aff) / n
     mu_k = np.dot(x.T, s) / n
     centering = (mu_aff / mu_k) ** 3
@@ -278,22 +606,91 @@ def full_stepsize(
 ):
     eta = 0.91
     # primal
+    # try:
+    #     i = delta_x < 0
+    #     alpha_primal_max = min(np.append(-x[i] / delta_x[i], 1))
+    #     alpha_primal = min(1, eta * alpha_primal_max)
+    # except:
+    #     raise Exception('alkdjflsdkjf')
+    #     alpha_primal = 1
     i = delta_x < 0
     alpha_primal_max = min(np.append(-x[i] / delta_x[i], 1))
     alpha_primal = min(1, eta * alpha_primal_max)
     # dual
-    i = delta_s < 0
-    alpha_dual_aff = min(np.append(-s[i] / delta_s[i], 1))
-    alpha_dual = min(1, eta * alpha_dual_aff)
+    try:
+        i = delta_s < 0
+        alpha_dual_aff = min(np.append(-s[i] / delta_s[i], 1))
+        alpha_dual = min(1, eta * alpha_dual_aff)
+    except:
+        alpha_dual = 1
     return (alpha_primal, alpha_dual)
 
 
-def corrected(
-    x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
+def full_stepsize_lb_ub(
+    x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff, lb, ub
 ):
-    (alpha_primal, alpha_dual) = full_stepsize(
-        x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
+    eta = 0.91
+    # for delta x > 0
+    # try:
+    #     i = delta_x > 0
+    #     alpha_primal_max_positive = (
+    #         min(np.append((ub[i] - x[i]) / delta_x[i], 1)) if any(i) else 1
+    #     )
+    #     alpha_primal_positive = min(1, eta * alpha_primal_max_positive)
+    # except Warning:
+    #     alpha_primal_positive = 1
+    # try:
+    #     j = delta_x < 0
+    #     alpha_primal_negative = (
+    #         min(np.append((lb[j] - x[j]) / delta_x[j], 1)) if any(j) else 1
+    #     )
+    #     alpha_primal_negative = min(1, eta * alpha_primal_negative)
+    # except Warning:
+    #     alpha_negative = 1
+    # alpha_primal = min(alpha_primal_positive, alpha_primal_negative)
+
+    # # dual
+    # k = delta_s < 0
+    # alpha_dual_aff = min(np.append(-s[k] / delta_s[k], 1)) if any(k) else 1
+    # alpha_dual = min(1, eta * alpha_dual_aff)
+    # return alpha_primal, alpha_dual
+    alpha_primal, alpha_dual = step_size(
+        x, y, s, delta=(delta_x, delta_y, delta_s), lb=lb, ub=ub
     )
+    return alpha_primal, alpha_dual
+
+
+def corrected(
+    x,
+    y,
+    s,
+    delta_x,
+    delta_y,
+    delta_s,
+    delta_x_aff,
+    delta_y_aff,
+    delta_s_aff,
+    bound=None,
+):
+    if bound is None:
+        (alpha_primal, alpha_dual) = full_stepsize(
+            x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
+        )
+    else:
+        lb, ub = bound
+        (alpha_primal, alpha_dual) = full_stepsize_lb_ub(
+            x,
+            y,
+            s,
+            delta_x,
+            delta_y,
+            delta_s,
+            delta_x_aff,
+            delta_y_aff,
+            delta_s_aff,
+            lb,
+            ub,
+        )
     x = x + alpha_primal * delta_x
     y = y + alpha_dual * delta_y
     s = s + alpha_dual * delta_s
@@ -418,97 +815,386 @@ def interior_sparse(A, b, c, cTlb, tol=1e-20):
     return (sum(x * c) - cTlb)[0]
 
 
-def get_Abc(c, Aeq=None, beq=None, Aineq=None, bineq=None):
-    if Aeq is not None and Aineq is not None:
-        row_Aeq, col_Aeq = np.shape(Aeq)
-        row_Aineq, col_Aineq = np.shape(Aineq)
-        if not sparse.issparse(Aineq):
-            I = np.eye(row_Aineq)
-            block1 = np.block([Aineq, I])
-            block2 = np.block([Aeq, np.zeros((row_Aeq, row_Aineq))])
-            A = np.block([[block1], [block2]])
-        else:  # sparse
-            row_Aineq, col_Aineq, value_Aineq = sparse.find(Aineq)
-            row_Aeq, col_Aeq, value_Aeq = sparse.find(Aeq)
-            # create slack I
-            row_I = range(row_Aineq)
-            col_I = range(col_Aineq, col_Aineq + row_Aineq)
-            value_I = np.ones((row_Aineq, 1))
-            # create Aeq
-            row_Aeq += row_Aineq
-            # append all
-            row = np.block([row_Aineq, row_Aeq, row_I])
-            col = np.block([col_Aineq, col_Aeq, col_I])
-            value = np.block([value_Aineq, value_Aeq, value_I])
-            A = sparse.csc_matrix((value, (row, col)))
-        b = np.block([[bineq], [beq]])
-        return A, b
-    elif Aeq is not None:
-        return Aeq, beq
-    elif Aineq is not None:
-        row_Aineq, col_Aineq = np.shape(Aineq)
-        if not sparse.issparse(Aineq):
-            I = np.eye(row_Aineq)
-            block1 = np.block([Aineq, I])
+def get_Abc(
+    c, Aeq=None, beq=None, Aineq=None, bineq=None, lb=None, ub=None, options="bound"
+):
+    n = len(c)
+    if options == "bound":
+        if Aeq is not None and Aineq is not None:
+            row_Aeq, col_Aeq = np.shape(Aeq)
+            row_Aineq, col_Aineq = np.shape(Aineq)
+            c = np.block([[c], [np.zeros((row_Aineq, 1))]])
+            b = np.block([[bineq], [beq]])
+            if np.count_nonzero(lb) == 0:
+                lb = None
+            else:
+                lb = np.block([[lb], [np.zeros((row_Aineq, 1))]])
+            if np.isinf(ub).all():
+                ub = None
+            else:
+                ub = np.block([[ub], [np.inf * np.ones((row_Aineq, 1))]])
+            if not sparse.issparse(Aineq):
+                I = np.eye(row_Aineq)
+                block1 = np.block([Aineq, I])
+                block2 = np.block([Aeq, np.zeros((row_Aeq, row_Aineq))])
+                A = np.block([[block1], [block2]])
+            else:  # sparse
+                I = sparse.identity(row_Aineq)
+                Aineq = sparse.hstack([Aineq, I])
+                Aeq = sparse.hstack([Aeq, np.zeros((len(beq), row_Aineq))])
+                A = sparse.vstack([Aineq, Aeq])
+            if lb is None and ub is None:
+                bound = None
+            else:
+                bound = (lb, ub)
+            return A, b, c, bound
+        elif Aeq is not None:
+            if np.count_nonzero(lb) == 0:
+                lb = None
+            if np.isinf(ub).all():
+                ub = None
+            if lb is None and ub is None:
+                bound = None
+            else:
+                bound = (lb, ub)
+            return Aeq, beq, c, bound
+        elif Aineq is not None:
+            row_Aineq, col_Aineq = np.shape(Aineq)
+            c = np.block([[c], [np.zeros((row_Aineq, 1))]])
+            if np.count_nonzero(lb) == 0:
+                lb = None
+            else:
+                lb = np.block([[lb], [np.zeros((row_Aineq, 1))]])
+            if sum(np.isinf(ub)) == len(ub):
+                ub = None
+            else:
+                ub = np.block([[ub], [np.inf * np.ones((row_Aineq, 1))]])
+            # lb = np.block([[lb], [np.zeros((row_Aineq, 1))]])
+            # ub = np.block([[ub], [np.zeros((row_Aineq, 1))]])
+            if lb is None and ub is None:
+                bound = None
+            else:
+                bound = (lb, ub)
+            if not sparse.issparse(Aineq):
+                I = np.eye(row_Aineq)
+                block1 = np.block([Aineq, I])
+                return block1, bineq, bound
+            else:
+                I = sparse.identity(row_Aineq)
+                A = sparse.hstack([Aineq, I])
+                # row_Aineq, col_Aineq, value_Aineq = sparse.find(Aineq)
+                # #  Create I
+                # row_I = range(row_Aineq)
+                # col_I = range(col_Aineq, col_Aineq + row_Aineq)
+                # value_I = np.ones((row_Aineq, 1))
+                return A, bineq, c, bound
+    elif options == "no-bound":
+        if Aineq is not None and Aeq is not None:
+            row_Aeq, col_Aeq = np.shape(Aeq)
+            row_Aineq, col_Aineq = np.shape(Aineq)
+            c = np.block([[c], [np.zeros((row_Aineq, 1))]])
+            b = np.block([[bineq], [beq]])
+            if (lb > -np.inf).all():
+                lb = None
+            else:
+                raise "there are -inf in lower bound"
+            if np.isinf(ub).all():
+                ub = None
+            else:
+                ub = np.block([[ub], [np.inf * np.ones((row_Aineq, 1))]])
+            if not sparse.issparse(Aineq):
+                I = np.eye(row_Aineq)
+                block1 = np.block([Aineq, I])
+                block2 = np.block([Aeq, np.zeros((row_Aeq, row_Aineq))])
+                A = np.block([[block1], [block2]])
+            else:  # sparse
+                I = sparse.identity(row_Aineq)
+                Aineq = sparse.hstack([Aineq, I])
+                Aeq = sparse.hstack([Aeq, np.zeros((len(beq), row_Aineq))])
+                A = sparse.vstack([Aineq, Aeq])
+            if lb is None and ub is None:
+                bound = None
+            else:
+                bound = (lb, ub)
+            return A, b, c, bound
+        elif Aeq is not None:
+            if (lb > -np.inf).all():
+                lb = None
+            else:
+                raise "there are -inf in lower bound"
+            if np.isinf(ub).all():
+                ub = None
+            if lb is None and ub is None:
+                bound = None
+            else:
+                bound = (lb, ub)
+            return Aeq, beq, c, bound
+        elif Aineq is not None:
+            row_Aineq, col_Aineq = np.shape(Aineq)
+            c = np.block([[c], [np.zeros((row_Aineq, 1))]])
+            if (lb > -np.inf).all():
+                lb = None
+            else:
+                raise "there are -inf in lower bound"
+            if np.isinf(ub).all():
+                ub = None
+            else:
+                ub = np.block([[ub], [np.inf * np.ones((row_Aineq, 1))]])
+            # lb = np.block([[lb], [np.zeros((row_Aineq, 1))]])
+            # ub = np.block([[ub], [np.zeros((row_Aineq, 1))]])
+            if lb is None and ub is None:
+                bound = None
+            else:
+                bound = (lb, ub)
+            if not sparse.issparse(Aineq):
+                I = np.eye(row_Aineq)
+                block1 = np.block([Aineq, I])
+                return block1, bineq, bound
+            else:
+                I = sparse.identity(row_Aineq)
+                A = sparse.hstack([Aineq, I])
+                # row_Aineq, col_Aineq, value_Aineq = sparse.find(Aineq)
+                # #  Create I
+                # row_I = range(row_Aineq)
+                # col_I = range(col_Aineq, col_Aineq + row_Aineq)
+                # value_I = np.ones((row_Aineq, 1))
+                return A, bineq, c, bound
+
+
+def add_bound_into_matrix(A, b, c, bound):
+    """This gives a matrix A in standard form adding upper bound in A 
+    min c^Tx
+    s.t. Ax = b
+         lb <= x <= ub
+
+    to
+
+    min c^T(x-lb)
+    s.t. A(x-lb) = b
+         0 <= x-lb
+    
+    Arguments:
+        A {matrix} -- constraints matrix
+        b {vector} -- right hand side
+        c {vector} -- objective function
+        bound {tuble} -- (lower bound, upper bound)
+    """
+    lb, ub = bound
+    # check -inf in lower bound
+    if np.isinf(-lb).any():
+        arg_lb = np.where(np.isinf(-lb))
+        arg_ub = np.where(np.isinf(ub))
+        x = np.intersect1d(arg_lb, arg_ub)
+        if any(x):
+            raise 'there is -inf and inf'
         else:
-            I = sparse.identity(row_Aineq)
-            A = sparse.hstack([Aineq, I])
-            # row_Aineq, col_Aineq, value_Aineq = sparse.find(Aineq)
-            # #  Create I
-            # row_I = range(row_Aineq)
-            # col_I = range(col_Aineq, col_Aineq + row_Aineq)
-            # value_I = np.ones((row_Aineq, 1))
-            return A, bineq
+            raise 'lb has -inf'
+
+
+    if lb is None and ub is None:
+        raise 'No-bound'
+    elif lb is None:
+        num_bound = np.count_nonzero()
+    elif ub is None:
+        constant = -c.T @ lb
+        b = b + A @ lb
+        return A, b, c, (None, None), constant
+    else:
+        pass
+
+
+def get_eliminate_system(A, b, c, x, y, s, options="predicted"):
+    # print(f'{list((x[i]/s[i])[0] for i in range(len(x)))}')
+    if options == "predicted":
+        r1, r2, r3 = test_create_rhs_predicted(A, b, c, x, y, s, options="seperated")
+        D = sparse.diags(list((x[i] / s[i])[0] for i in range(len(x))))
+        block1 = sparse.hstack([D, -A.T])
+        row_A = np.shape(A)[0]
+        block2 = sparse.hstack([-A, np.zeros((row_A, row_A))])
+        matrix = sparse.vstack([block1, block2])
+        m, n = np.shape(matrix)
+        m_A, n_A = np.shape(A)
+        # print('get eliminate system row A =', m_A)
+        # print('get eliminate system row A =', n_A)
+        # print('get eliminate system row matrix =', m)
+        # print('get eliminate system col matrix =', n)
+        matrix = sparse.csc_matrix(matrix)
+        # print('get eliminate system type matrix =', type(matrix))
+        # plt.spy(matrix)
+        # plt.show()
+        # right hand side
+        # print(f"{r1=}")
+        # print(f"{r2=}")
+        # print(f"{r3=}")
+        rhs = np.block([[r1 - r3 / x], [r2]])
+        return matrix, rhs, r3
+    elif options == "corrected":
+        pass
 
 
 def new_interior_sparse(
     c, Aeq=None, beq=None, Aineq=None, bineq=None, lb=None, ub=None, tol=1e-20
-):
+    ):
     e1 = tol
     e2 = tol
-    e3 = tol
-    A, b = get_Abc(c, Aeq, beq, Aineq, bineq)
+    e3 = 1e-6
+    A, b, c, bound = get_Abc(
+        c=c,
+        Aeq=Aeq,
+        beq=beq,
+        Aineq=Aineq,
+        bineq=bineq,
+        lb=lb,
+        ub=ub,
+        options="no-bound",
+    )
+
+    if bound is not None:
+        lb, ub = bound
+        print("bound is not None")
+    else:
+        lb, ub = None, None
+        print("bound is None")
+
+    # Parameters
     m, n = np.shape(A)
     k = 0
+    count = 1
+    last_objective = 0
+    print("solving...")
+
+    # initial vector
     # (x, y, s) = initial_vector(A)
     (x, y, s) = initial_vector_sparse(m, n)
-    print("solving...")
-    while check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse") and k < 5000:
+
+    while check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse") and k < 1000:
+        # Error happend at iteration 593.
         # print("iteration : {}".format(k))
+        # if k == 593:
+        #     raise '593'
+
         # get direction
         (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted_sparse(
-            A, b, c, x, y, s
+            A, b, c, x, y, s, method="normal"
         )
-        # get stepsize
-        (alpha_primal, alpha_dual) = predicted_stepsize(
-            delta_x_aff, delta_y_aff, delta_s_aff, x, s
-        )
-        # update direction
-        (x_aff, y_aff, s_aff) = predicted(
-            x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
-        )
-        # calculate duality gap
-        (mu_aff, mu_k, centering) = duality_gap(
-            A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
-        )
-        # get direction
-        (delta_x, delta_y, delta_s) = direction_corrected_sparse(
-            A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
-        )
-        # update direction
-        (x, y, s) = corrected(
-            x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
-        )
+        
+        # This section check the existing of nan in predicted direction.
+        check1 = np.isnan(delta_x_aff).any()
+        check2 = np.isnan(delta_y_aff).any()
+        check3 = np.isnan(delta_s_aff).any()
+        if check1 or check2 or check3:
+            print("nan happend here!!! k = ", k)
+            print("nan happend in x :"      , check1)
+            print("nan happend in y :"      , check2)
+            print("nan happend in s :"      , check3)
+        
+        if bound is not None:
+
+            # get stepsize
+            (alpha_primal, alpha_dual) = predicted_stepsize_lb_ub(
+                delta_x_aff, delta_y_aff, delta_s_aff, x, s, lb, ub
+            )
+
+            # update direction
+            (x_aff, y_aff, s_aff) = predicted(
+                x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=(lb, ub)
+            )
+
+            # calculate duality gap
+            (mu_aff, mu_k, centering) = duality_gap(
+                A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=(lb, ub)
+            )
+
+            # get direction
+            (delta_x, delta_y, delta_s) = direction_corrected_sparse(
+                A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+            )
+
+            # update direction
+            (x, y, s) = corrected(
+                x,
+                y,
+                s,
+                delta_x,
+                delta_y,
+                delta_s,
+                delta_x_aff,
+                delta_y_aff,
+                delta_s_aff,
+                bound=(lb, ub),
+            )
+        else:
+            # print('Bound is None here!!!!')
+
+            # get stepsize
+            (alpha_primal, alpha_dual) = predicted_stepsize(
+                delta_x_aff, delta_y_aff, delta_s_aff, x, s
+            )
+
+            # update direction
+            (x_aff, y_aff, s_aff) = predicted(
+                x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=None
+            )
+
+            # calculate duality gap
+            (mu_aff, mu_k, centering) = duality_gap(
+                A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=None
+            )
+
+            # get direction
+            (delta_x, delta_y, delta_s) = direction_corrected_sparse(
+                A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff
+            )
+
+            # update direction
+            (x, y, s) = corrected(
+                x,
+                y,
+                s,
+                delta_x,
+                delta_y,
+                delta_s,
+                delta_x_aff,
+                delta_y_aff,
+                delta_s_aff,
+                bound=None,
+            )
+
         # go to the next iteration
         k += 1
-        if np.mod(k, 100) == 0:
-            print("objective function:", sum(x * c))
-
+        objective = sum(x * c)[0]
+        # print("objective function:", objective)
+        
+        if np.isnan(objective):
+            print("objective is nan")
+            print(
+                "optimal:",
+                ~check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse"),
+            )
+            return last_objective
+        elif abs(last_objective - objective) < 1e-12 and count == 10:
+            count += 1
+            print("last objective equal to current objective")
+            print(
+                "optimal:",
+                ~check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse"),
+            )
+            return objective
+        else:
+            # print('update objective')
+            last_objective = objective
+        # if np.isnan(sum(x*c)[0]):
+        #     raise 'objective is nan'
+    return objective
     # print output
-    print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse"))
+    # print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse"))
     # print("x:\n", x)
     print("k:\n", k)
-    return (sum(x * c))[0]
+    # if objective is np.nan:
+    #     return last_objective
+    # else:
+    #     last_objective = objective
+    # return (sum(x * c))[0]
 
 
 ## Example problems
@@ -532,16 +1218,16 @@ def ex3():
     c = np.array([-300, -500, -200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     A = np.array(
         [
-            [10, 7.5, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # C1
-            [0, 10, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],  # C2
+            [10, 7.5, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],     # C1
+            [0, 10, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],       # C2
             [0.5, 0.4, 0.5, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],  # C3
-            [0, 0.4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],  # C4
+            [0, 0.4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],      # C4
             [0.5, 0.1, 0.5, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],  # C5
             [0.4, 0.2, 0.4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],  # C6
-            [1, 1.5, 0.5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],  # C7
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # C8
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # C9
-            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],  # C10
+            [1, 1.5, 0.5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],    # C7
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],        # C8
+            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],        # C9
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],        # C10
         ]
     )
     b = np.array([4350, 2500, 280, 140, 280, 140, 700, 300, 180, 400])
