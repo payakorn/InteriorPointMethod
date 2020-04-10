@@ -111,7 +111,7 @@ def create_rhs_predicted(A, b, c, x, y, s, options="non-sparse"):
 
 def create_rhs_corrected(
     A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, options="non-sparse"
-):
+    ):
     if options == "non-sparse":
         m, n = np.shape(A)
         rb = np.matmul(A, x) - b
@@ -246,7 +246,7 @@ def direction_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff)
 
 def direction_corrected_sparse(
     A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, method="full"
-):
+    ):
     if method == "full":
         m, n = np.shape(A)
         i, j, k = sparse.find(A)
@@ -603,7 +603,7 @@ def duality_gap(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=None):
 
 def full_stepsize(
     x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
-):
+    ):
     eta = 0.91
     # primal
     # try:
@@ -628,7 +628,7 @@ def full_stepsize(
 
 def full_stepsize_lb_ub(
     x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff, lb, ub
-):
+    ):
     eta = 0.91
     # for delta x > 0
     # try:
@@ -671,7 +671,7 @@ def corrected(
     delta_y_aff,
     delta_s_aff,
     bound=None,
-):
+    ):
     if bound is None:
         (alpha_primal, alpha_dual) = full_stepsize(
             x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
@@ -817,8 +817,12 @@ def interior_sparse(A, b, c, cTlb, tol=1e-20):
 
 def get_Abc(
     c, Aeq=None, beq=None, Aineq=None, bineq=None, lb=None, ub=None, options="bound"
-):
+    ):
+    # Parameters
     n = len(c)
+
+    # TODO (get_Abc) Add option that generate the upper bound into standard form
+
     if options == "bound":
         if Aeq is not None and Aineq is not None:
             row_Aeq, col_Aeq = np.shape(Aeq)
@@ -963,6 +967,9 @@ def get_Abc(
 
 def add_bound_into_matrix(A, b, c, bound):
     """This gives a matrix A in standard form adding upper bound in A 
+
+    @@ This function created for get_Abc function
+
     min c^Tx
     s.t. Ax = b
          lb <= x <= ub
@@ -979,28 +986,41 @@ def add_bound_into_matrix(A, b, c, bound):
         c {vector} -- objective function
         bound {tuble} -- (lower bound, upper bound)
     """
+
+    # TODO (add_bound_into_matrix) Add this function into get_Abc function
+
     lb, ub = bound
-    # check -inf in lower bound
+
+    # Check -inf in lower bound (if lower bound is -inf)
+    # FIXME (add_bound_into_matrix) now this only check the existing of -inf
     if np.isinf(-lb).any():
         arg_lb = np.where(np.isinf(-lb))
         arg_ub = np.where(np.isinf(ub))
         x = np.intersect1d(arg_lb, arg_ub)
+
         if any(x):
             raise "there is -inf and inf"
         else:
             raise "lb has -inf"
 
+    # The cases that either of lower or upper is None 
+    # FIXME (add_bound_into_matrix) fix return to A, b, c, bound, constant(from changing variable)
     if lb is None and ub is None:
-        raise "No-bound"
+        # The problem already in standard form
+        return A, b, c, (None, None), 0 
     elif lb is None:
+        # lb = 0 and ub is not inf
         num_bound = np.count_nonzero()
+        
     elif ub is None:
+        # ub = inf and lb is not 0, there is an constant when change x to x-lb
         constant = -c.T @ lb
         b = b + A @ lb
         return A, b, c, (None, None), constant
     else:
+        # lb not 0 and ub is not inf
         pass
-        # TODO (add bound into matrix)
+        # FIXME (add bound into matrix) complete this!!
 
 
 def get_eliminate_system(A, b, c, x, y, s, options="predicted"):
@@ -1025,7 +1045,7 @@ def new_interior_sparse(
     c, Aeq=None, beq=None, Aineq=None, bineq=None, lb=None, ub=None, tol=1e-20
     ):
 
-    # TODO Add presolve
+    # TODO (new_interior_sparse) Add presolve
 
     # Define tol
     e1 = tol
@@ -1063,19 +1083,18 @@ def new_interior_sparse(
     (x, y, s) = initial_vector_sparse(m, n)
 
     while check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse") and k < 1000:
-        # REMARK (new interior sparse) incompleted
-        # FIXME Error happend at iteration 593.
+        # FIXME (new_interior_sparse) Error happend at iteration 593.
         # print("iteration : {}".format(k))
         # if k == 593:
         #     raise '593'
 
-        # Get direction
+        # Get predicted direction
         (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted_sparse(
             A, b, c, x, y, s, method="normal"
         )
 
         # This section check the existing of nan in predicted direction.
-        # FIXME delta_aff is nan.
+        # FIXME (new_interior_sparse) delta_aff is nan.
         check1 = np.isnan(delta_x_aff).any()
         check2 = np.isnan(delta_y_aff).any()
         check3 = np.isnan(delta_s_aff).any()
