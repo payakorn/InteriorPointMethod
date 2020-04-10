@@ -986,13 +986,12 @@ def add_bound_into_matrix(A, b, c, bound):
         arg_ub = np.where(np.isinf(ub))
         x = np.intersect1d(arg_lb, arg_ub)
         if any(x):
-            raise 'there is -inf and inf'
+            raise "there is -inf and inf"
         else:
-            raise 'lb has -inf'
-
+            raise "lb has -inf"
 
     if lb is None and ub is None:
-        raise 'No-bound'
+        raise "No-bound"
     elif lb is None:
         num_bound = np.count_nonzero()
     elif ub is None:
@@ -1001,10 +1000,10 @@ def add_bound_into_matrix(A, b, c, bound):
         return A, b, c, (None, None), constant
     else:
         pass
+        # TODO (add bound into matrix)
 
 
 def get_eliminate_system(A, b, c, x, y, s, options="predicted"):
-    # print(f'{list((x[i]/s[i])[0] for i in range(len(x)))}')
     if options == "predicted":
         r1, r2, r3 = test_create_rhs_predicted(A, b, c, x, y, s, options="seperated")
         D = sparse.diags(list((x[i] / s[i])[0] for i in range(len(x))))
@@ -1014,30 +1013,26 @@ def get_eliminate_system(A, b, c, x, y, s, options="predicted"):
         matrix = sparse.vstack([block1, block2])
         m, n = np.shape(matrix)
         m_A, n_A = np.shape(A)
-        # print('get eliminate system row A =', m_A)
-        # print('get eliminate system row A =', n_A)
-        # print('get eliminate system row matrix =', m)
-        # print('get eliminate system col matrix =', n)
         matrix = sparse.csc_matrix(matrix)
-        # print('get eliminate system type matrix =', type(matrix))
-        # plt.spy(matrix)
-        # plt.show()
-        # right hand side
-        # print(f"{r1=}")
-        # print(f"{r2=}")
-        # print(f"{r3=}")
         rhs = np.block([[r1 - r3 / x], [r2]])
         return matrix, rhs, r3
     elif options == "corrected":
         pass
+        # TODO (get eliminated system) corrected direction.
 
 
 def new_interior_sparse(
     c, Aeq=None, beq=None, Aineq=None, bineq=None, lb=None, ub=None, tol=1e-20
     ):
+
+    # TODO Add presolve
+
+    # Define tol
     e1 = tol
     e2 = tol
     e3 = 1e-6
+
+    # Convert the problem to standard form.
     A, b, c, bound = get_Abc(
         c=c,
         Aeq=Aeq,
@@ -1049,6 +1044,7 @@ def new_interior_sparse(
         options="no-bound",
     )
 
+    # Define bound
     if bound is not None:
         lb, ub = bound
         print("bound is not None")
@@ -1058,36 +1054,37 @@ def new_interior_sparse(
 
     # Parameters
     m, n = np.shape(A)
-    k = 0
+    k = 1
     count = 1
     last_objective = 0
-    print("solving...")
+    print("Solving...")
 
-    # initial vector
-    # (x, y, s) = initial_vector(A)
+    # Initial vector
     (x, y, s) = initial_vector_sparse(m, n)
 
     while check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse") and k < 1000:
-        # Error happend at iteration 593.
+        # REMARK (new interior sparse) incompleted
+        # FIXME Error happend at iteration 593.
         # print("iteration : {}".format(k))
         # if k == 593:
         #     raise '593'
 
-        # get direction
+        # Get direction
         (delta_x_aff, delta_y_aff, delta_s_aff) = direction_predicted_sparse(
             A, b, c, x, y, s, method="normal"
         )
-        
+
         # This section check the existing of nan in predicted direction.
+        # FIXME delta_aff is nan.
         check1 = np.isnan(delta_x_aff).any()
         check2 = np.isnan(delta_y_aff).any()
         check3 = np.isnan(delta_s_aff).any()
         if check1 or check2 or check3:
             print("nan happend here!!! k = ", k)
-            print("nan happend in x :"      , check1)
-            print("nan happend in y :"      , check2)
-            print("nan happend in s :"      , check3)
-        
+            print("nan happend in x :", check1)
+            print("nan happend in y :", check2)
+            print("nan happend in s :", check3)
+
         if bound is not None:
 
             # get stepsize
@@ -1124,7 +1121,7 @@ def new_interior_sparse(
                 bound=(lb, ub),
             )
         else:
-            # print('Bound is None here!!!!')
+            print('Bound is None here!!!!')
 
             # get stepsize
             (alpha_primal, alpha_dual) = predicted_stepsize(
@@ -1163,8 +1160,8 @@ def new_interior_sparse(
         # go to the next iteration
         k += 1
         objective = sum(x * c)[0]
-        # print("objective function:", objective)
-        
+
+        # Check wheather the objective is nan or not
         if np.isnan(objective):
             print("objective is nan")
             print(
@@ -1181,20 +1178,9 @@ def new_interior_sparse(
             )
             return objective
         else:
-            # print('update objective')
             last_objective = objective
-        # if np.isnan(sum(x*c)[0]):
-        #     raise 'objective is nan'
     return objective
-    # print output
-    # print("optimal:", ~check_optimality(A, b, c, x, y, s, e1, e2, e3, options="sparse"))
-    # print("x:\n", x)
     print("k:\n", k)
-    # if objective is np.nan:
-    #     return last_objective
-    # else:
-    #     last_objective = objective
-    # return (sum(x * c))[0]
 
 
 ## Example problems
@@ -1218,16 +1204,16 @@ def ex3():
     c = np.array([-300, -500, -200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     A = np.array(
         [
-            [10, 7.5, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],     # C1
-            [0, 10, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],       # C2
+            [10, 7.5, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # C1
+            [0, 10, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],  # C2
             [0.5, 0.4, 0.5, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],  # C3
-            [0, 0.4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],      # C4
+            [0, 0.4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],  # C4
             [0.5, 0.1, 0.5, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],  # C5
             [0.4, 0.2, 0.4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],  # C6
-            [1, 1.5, 0.5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],    # C7
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],        # C8
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],        # C9
-            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],        # C10
+            [1, 1.5, 0.5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],  # C7
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # C8
+            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # C9
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],  # C10
         ]
     )
     b = np.array([4350, 2500, 280, 140, 280, 140, 700, 300, 180, 400])

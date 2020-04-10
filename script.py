@@ -117,12 +117,14 @@ def create_bound_for_scipy(lb, ub):
 
 
 def test_main_interior_sparse():
+
     """test interior point method with benchmarks in the form
     min c^Tx
     s.t. Aineq * x <= bineq
           Aeq * x   = beq
           lb <= x <= ub
     """
+
     bound = None
     Name, obj_Netlib = benchmark()
     Name_work = benchmark_work()
@@ -141,9 +143,12 @@ def test_main_interior_sparse():
         )
     )
     line.close()
+
     for i in Name_work[1:12]:
+        # REMARK usually use Name_work[1:12]
         print('\n\nProblem name: {}'.format(i))
         c, Aineq, bineq, Aeq, beq, lb, ub = create_problem_from_mps_matlab(i)
+
         # Scipy
         start_time1 = time.time()
         bounds = create_bound_for_scipy(lb, ub)
@@ -174,6 +179,8 @@ def test_main_interior_sparse():
         # print("obj fun scipy : {0}".format(np.nan))
         print("interior time : {}".format(end_time2 - start_time2))
         print("scipy    time : {}".format(end_time1 - start_time1))
+
+        # save to text file
         line = open("conclusion1.txt", "a")
         line.write(
             "{0:17s} {2:17.2f} {3:>20.2f} {1:20.2f} {4:20.2f} {5:20.2f}\r\n".format(
@@ -226,4 +233,3 @@ def check_bound():
 
 if __name__ == "__main__":
     test_main_interior_sparse()
-    # check_bound()
