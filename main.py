@@ -111,7 +111,7 @@ def create_rhs_predicted(A, b, c, x, y, s, options="non-sparse"):
 
 def create_rhs_corrected(
     A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, options="non-sparse"
-    ):
+):
     if options == "non-sparse":
         m, n = np.shape(A)
         rb = np.matmul(A, x) - b
@@ -246,7 +246,7 @@ def direction_corrected(A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff)
 
 def direction_corrected_sparse(
     A, b, c, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, method="full"
-    ):
+):
     if method == "full":
         m, n = np.shape(A)
         i, j, k = sparse.find(A)
@@ -603,7 +603,7 @@ def duality_gap(A, x, y, s, delta_x_aff, delta_y_aff, delta_s_aff, bound=None):
 
 def full_stepsize(
     x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
-    ):
+):
     eta = 0.91
     # primal
     # try:
@@ -628,7 +628,7 @@ def full_stepsize(
 
 def full_stepsize_lb_ub(
     x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff, lb, ub
-    ):
+):
     eta = 0.91
     # for delta x > 0
     # try:
@@ -671,7 +671,7 @@ def corrected(
     delta_y_aff,
     delta_s_aff,
     bound=None,
-    ):
+):
     if bound is None:
         (alpha_primal, alpha_dual) = full_stepsize(
             x, y, s, delta_x, delta_y, delta_s, delta_x_aff, delta_y_aff, delta_s_aff
@@ -882,7 +882,7 @@ def get_Abc(
             if not sparse.issparse(Aineq):
                 I = np.eye(row_Aineq)
                 block1 = np.block([Aineq, I])
-                return block1, bineq, bound
+                return block1, bineq, c, bound
             else:
                 I = sparse.identity(row_Aineq)
                 A = sparse.hstack([Aineq, I])
@@ -993,33 +993,70 @@ def add_bound_into_matrix(A, b, c, bound):
 
     # Check -inf in lower bound (if lower bound is -inf)
     # FIXME (add_bound_into_matrix) now this only check the existing of -inf
-    if np.isinf(-lb).any():
-        arg_lb = np.where(np.isinf(-lb))
-        arg_ub = np.where(np.isinf(ub))
-        x = np.intersect1d(arg_lb, arg_ub)
+    if lb is not None and ub is not None:
+        if np.isinf(-lb).any():
+            arg_lb = np.where(np.isinf(-lb))
+            arg_ub = np.where(np.isinf(ub))
+            x = np.intersect1d(arg_lb, arg_ub)
 
-        if any(x):
-            raise "there is -inf and inf"
-        else:
-            raise "lb has -inf"
+            if any(x):
+                raise "there is -inf or inf"
+            else:
+                raise "lb has no -inf"
 
-    # The cases that either of lower or upper is None 
+    # The cases that either of lower or upper is None
     # FIXME (add_bound_into_matrix) fix return to A, b, c, bound, constant(from changing variable)
     if lb is None and ub is None:
         # The problem already in standard form
-        return A, b, c, (None, None), 0 
+        return A, b, c, (None, None), 0
+
     elif lb is None:
         # lb = 0 and ub is not inf
-        num_bound = np.count_nonzero()
-        
+        # REMARK (add_bound_into_matrix) need to test
+
+        # find the number of non infinity upper bound
+        row_A, col_A = np.shape(A)
+        col = np.nonzero(ub < np.inf)[0]
+        num_upper = len(col)
+
+        # add zero matrix to the right of matrix A -> [A 0]
+        A = sparse.hstack([A, np.zeros((row_A, num_upper))])
+        # TODO (add_bound_into_matrix) create the bound matrix corresponding to variables
+
+        # create bound in matrix form 
+        row = np.arange(num_upper)
+        val = np.ones((num_upper))
+        bound_matrix = sparse.csc_matrix((val, (row, col)), shape=(num_upper, col_A))
+
+        # add slack into bound matrix -> [U I]
+        upper_bound_matrix = sparse.hstack([bound_matrix, np.eye(num_upper)])
+
+        # append the bound matrix with A -> [A 0]
+        #                                   [U I]
+        A = sparse.vstack([A, upper_bound_matrix])
+        b = np.block([[b], [ub[col]]])
+        c = np.block([[c], [np.zeros((num_upper, 1))]])
+        return A, b, c, (None, None), 0
+
     elif ub is None:
         # ub = inf and lb is not 0, there is an constant when change x to x-lb
         constant = -c.T @ lb
         b = b + A @ lb
         return A, b, c, (None, None), constant
+
     else:
         # lb not 0 and ub is not inf
-        pass
+        # REMARK (add_bound_into_matrix) need to test
+        # arg_ub = np.where(np.nonzeros(ub < np.inf))
+        num_upper = len(arg_ub)
+        row_A, col_A = np.shape(A)
+        A = sparse.hstack([A, np.zeros(num_upper, row_A)])
+        upper_bound_matrix = sparse.hstack(
+            [np.zeros(num_upper, col_A), np.eye(num_upper)]
+        )
+        A = sparse.vstack([A, upper_bound_matrix])
+        b = b
+        return A, b, c, (None, None), 0
         # FIXME (add bound into matrix) complete this!!
 
 
@@ -1063,6 +1100,12 @@ def new_interior_sparse(
         ub=ub,
         options="no-bound",
     )
+
+    # REMARK working now
+    # Add bound into matrix
+    if bound is not None:
+        print('----------Add bound into matrix section----------\n')
+        A, b, c, bound, clb = add_bound_into_matrix(A, b, c, bound)
 
     # Define bound
     if bound is not None:
@@ -1140,7 +1183,7 @@ def new_interior_sparse(
                 bound=(lb, ub),
             )
         else:
-            print('Bound is None here!!!!')
+            print("Bound is None here (the problem in standard form)!!!!")
 
             # get stepsize
             (alpha_primal, alpha_dual) = predicted_stepsize(
@@ -1223,20 +1266,52 @@ def ex3():
     c = np.array([-300, -500, -200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     A = np.array(
         [
-            [10, 7.5, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # C1
-            [0, 10, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],  # C2
+            [10 , 7.5, 4  , 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # C1
+            [0  , 10 , 0  , 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],  # C2
             [0.5, 0.4, 0.5, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],  # C3
-            [0, 0.4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],  # C4
+            [0  , 0.4, 0  , 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],  # C4
             [0.5, 0.1, 0.5, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],  # C5
             [0.4, 0.2, 0.4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],  # C6
-            [1, 1.5, 0.5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],  # C7
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # C8
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # C9
-            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],  # C10
+            [1  , 1.5, 0.5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],  # C7
+            [1  , 0  , 0  , 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # C8
+            [0  , 1  , 0  , 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # C9
+            [0  , 0  , 1  , 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],  # C10
         ]
-    )
+    ) # 10x13
     b = np.array([4350, 2500, 280, 140, 280, 140, 700, 300, 180, 400])
     return (A, b, c)
+
+
+def ex4():
+    # Similar to ex3 (not in standard form)
+    # This problem is used to check the get_Abc function and add_bound_into_matrix function
+
+    # Equality constraints
+    Aeq = None
+    beq = None
+
+    # Bound
+    lb = np.zeros(3).reshape(3, 1)
+    ub = np.array([300, 180, 400]).reshape(3, 1)
+
+    # Objective function
+    c = np.array([-300, -500, -200]).reshape(3, 1)
+
+    # Inequality constraints
+    Aineq = np.array(
+        [
+            [10 , 7.5, 4  ],  # C1
+            [0  , 10 , 0  ],  # C2
+            [0.5, 0.4, 0.5],  # C3
+            [0  , 0.4, 0  ],  # C4
+            [0.5, 0.1, 0.5],  # C5
+            [0.4, 0.2, 0.4],  # C6
+            [1  , 1.5, 0.5],  # C7
+        ]
+    ) # 7x3
+    bineq = np.array([4350, 2500, 280, 140, 280, 140, 700]).reshape(7, 1) # 7x1
+
+    return c, Aeq, beq, Aineq, bineq, lb, ub
 
 
 def benchmark():

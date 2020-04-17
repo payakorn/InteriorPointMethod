@@ -146,7 +146,7 @@ def test_main_interior_sparse():
 
     for i in Name_work[1:12]:
         # REMARK usually use Name_work[1:12]
-        print('\n\nProblem name: {}'.format(i))
+        print("\n\nProblem name: {}".format(i))
         c, Aineq, bineq, Aeq, beq, lb, ub = create_problem_from_mps_matlab(i)
 
         # Scipy
@@ -168,7 +168,9 @@ def test_main_interior_sparse():
         # Interior
         start_time2 = time.time()
         # obj_fun = interior_sparse(A=A, b=b, c=c, cTlb=cTb, tol=1e-8)
-        obj_fun = new_interior_sparse(c=c, Aineq=Aineq, bineq=bineq, Aeq=Aeq, beq=beq, lb=lb, ub=ub, tol=1e-6)
+        obj_fun = new_interior_sparse(
+            c=c, Aineq=Aineq, bineq=bineq, Aeq=Aeq, beq=beq, lb=lb, ub=ub, tol=1e-6
+        )
         end_time2 = time.time()
 
         # information
@@ -197,16 +199,16 @@ def test_main_interior_sparse():
 
 
 def test_load_matrix():
-    c, Aineq, bineq, Aeq, beq, lb, ub = load_data_mps_matlab(file_name='BANDM')
-    print(f'{Aineq = }')
-    print(f'{sparse.issparse(Aineq) = }')
-    print(f'{Aeq = }')
-    print(f'{sparse.issparse(Aeq) = }')
-    print(f'{len(bineq) = }, shape={np.shape(bineq)}')
-    print(f'{len(beq) = }, shape={np.shape(beq)}')
-    print(f'{len(lb) = }, shape={np.shape(lb)}')
-    print(f'{len(ub) = }, shape={np.shape(ub)}')
-    print(f'{len(c) = }, shape={np.shape(c)}')
+    c, Aineq, bineq, Aeq, beq, lb, ub = load_data_mps_matlab(file_name="BANDM")
+    print(f"{Aineq = }")
+    print(f"{sparse.issparse(Aineq) = }")
+    print(f"{Aeq = }")
+    print(f"{sparse.issparse(Aeq) = }")
+    print(f"{len(bineq) = }, shape={np.shape(bineq)}")
+    print(f"{len(beq) = }, shape={np.shape(beq)}")
+    print(f"{len(lb) = }, shape={np.shape(lb)}")
+    print(f"{len(ub) = }, shape={np.shape(ub)}")
+    print(f"{len(c) = }, shape={np.shape(c)}")
 
 
 def check_bound():
@@ -216,20 +218,61 @@ def check_bound():
         c, Aineq, bineq, Aeq, beq, lb, ub = load_data_mps_matlab(file_name=i)
         ub = np.array([j[0] for j in ub])
         n = len(lb)
-        lower_bound_zeros =  np.count_nonzero(np.array([j[0] for j in lb]) == 0)
-        upper_bound_inf =  sum(np.isinf(ub))
-        print('Name:', i)
-        print('lower bound zeros:', lower_bound_zeros)
-        print('upper bound inf:', upper_bound_inf)
+        lower_bound_zeros = np.count_nonzero(np.array([j[0] for j in lb]) == 0)
+        upper_bound_inf = sum(np.isinf(ub))
+        print("Name:", i)
+        print("lower bound zeros:", lower_bound_zeros)
+        print("upper bound inf:", upper_bound_inf)
         if lower_bound_zeros == n:
-            print('no lower bound')
+            print("no lower bound")
         else:
-            print('has lower bound')
+            print("has lower bound")
         if upper_bound_inf == n:
-            print('no upper bound\n')
+            print("no upper bound\n")
         else:
-            print('has upper bound\n')
+            print("has upper bound\n")
 
+
+def check_GetAbc_Upper_into_matrix():
+
+    # load problem
+    c, Aeq, beq, Aineq, bineq, lb, ub = ex4()
+
+    # print information
+    print(f"{c = }, {np.shape(c)}")
+    print(f"{bineq = }, {np.shape(bineq)}")
+    print(f"{Aineq = }, {np.shape(Aineq)}")
+    print(f"{lb = }, {np.shape(lb)}")
+    print(f"{ub = }, {np.shape(ub)}")
+    print(f"{Aeq = }")
+    print(f"{beq = }")
+
+    # convert to standard form
+    A, b, c, bound = get_Abc(
+        c=c, Aeq=Aeq, beq=beq, Aineq=Aineq, bineq=bineq, lb=lb, ub=ub
+    )
+
+    # convert to sparse
+    A = sparse.csc_matrix(A)
+
+    # print information
+    print('\n----get_Abc----\n')
+    print(f"{c = }, {np.shape(c)}")
+    print(f"{b = }, {np.shape(b)}")
+    print(f"{A = }, {np.shape(A)}")
+    print(f"{bound = }")
+
+    # Test Add bound into matrix
+    A, b, c, bound, cTb = add_bound_into_matrix(A, b, c, bound)
+
+    # print information
+    print('\n----get_Abc----\n')
+    print(f"{c = }, {np.shape(c)}")
+    print(f"{b = }, {np.shape(b)}")
+    print(f"{A = }, {np.shape(A)}")
+    print(f"{bound = }")
+    print(f"{cTb = }")
 
 if __name__ == "__main__":
-    test_main_interior_sparse()
+    check_GetAbc_Upper_into_matrix()
+    # test_main_interior_sparse()
